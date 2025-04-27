@@ -234,7 +234,7 @@ export async function GET() {
             })
           );
 
-          const validQuotes = quotes.filter(q => q !== null);
+          const validQuotes = quotes.filter((q): q is { quote: any; asset: CategorizedAsset } => q !== null);
           
           validQuotes.forEach(({ quote, asset }) => {
             if (quote.regularMarketPrice) {
