@@ -239,7 +239,7 @@ export async function GET() {
           validQuotes.forEach(({ quote, asset }) => {
             if (quote.regularMarketPrice) {
               const assetData: MarketData = {
-                symbol: asset.formattedSymbol, // Use the properly formatted symbol
+                symbol: asset.formattedSymbol,
                 name: asset.type === 'commodity' ? asset.name : (quote.longName || quote.shortName || asset.formattedSymbol),
                 price: quote.regularMarketPrice,
                 change: quote.regularMarketChange,
@@ -249,6 +249,10 @@ export async function GET() {
                 type: asset.type,
                 dayHigh: quote.regularMarketDayHigh,
                 dayLow: quote.regularMarketDayLow,
+                fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
+                fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
+                averageVolume: quote.averageDailyVolume3Month,
+                openPrice: quote.regularMarketOpen,
               };
               const segmentKey = getSegmentKey(asset.type);
               marketData[segmentKey].push(assetData);

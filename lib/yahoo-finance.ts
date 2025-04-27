@@ -11,6 +11,10 @@ export interface MarketData {
   marketCap?: number;
   dayHigh?: number;
   dayLow?: number;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
+  averageVolume?: number;
+  openPrice?: number;
   error?: boolean;
 }
 
