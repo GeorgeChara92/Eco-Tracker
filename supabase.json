@@ -1,0 +1,9 @@
+{
+  "projectId": "djxkwfaezfgvkfkngsny",
+  "api": {
+    "port": 54321,
+    "schemas": ["public"],
+    "extraSearchPath": ["public", "extensions"],
+    "maxRows": 1000
+  }
+} 
