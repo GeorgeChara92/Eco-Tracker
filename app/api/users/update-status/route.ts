@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { supabase } from '@/lib/supabase';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
-
-const prisma = new PrismaClient();
 
 export async function POST(request: Request) {
   try {
@@ -50,20 +48,22 @@ export async function POST(request: Request) {
       );
     }
 
-    // Update the user's status
-    await prisma.user.update({
-      where: { id: userId },
-      data: { status },
-    });
+    // Update user status in Supabase
+    const { error } = await supabase
+      .from('users')
+      .update({ status })
+      .eq('id', userId);
+
+    if (error) throw error;
 
     return NextResponse.json({
       success: true,
-      message: `User status updated to "${status}" successfully`
+      message: 'User status updated successfully'
     });
   } catch (error) {
-    console.error('User status update error:', error);
+    console.error('Error updating user status:', error);
     return NextResponse.json(
-      { error: 'An error occurred during status update' },
+      { error: 'Failed to update user status' },
       { status: 500 }
     );
   }

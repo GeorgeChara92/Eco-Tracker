@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-import { hash } from 'bcryptjs';
+import { supabase } from '@/lib/supabase';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
-
-const prisma = new PrismaClient();
 
 export async function POST(request: Request) {
   try {
@@ -34,23 +31,22 @@ export async function POST(request: Request) {
       );
     }
 
-    // Hash the new password
-    const hashedPassword = await hash(newPassword, 10);
+    // Update the user's password using Supabase Auth
+    const { error } = await supabase.auth.admin.updateUserById(
+      userId,
+      { password: newPassword }
+    );
 
-    // Update the user's password
-    await prisma.user.update({
-      where: { id: userId },
-      data: { password: hashedPassword },
-    });
+    if (error) throw error;
 
     return NextResponse.json({
       success: true,
       message: 'Password reset successfully'
     });
   } catch (error) {
-    console.error('Password reset error:', error);
+    console.error('Error resetting password:', error);
     return NextResponse.json(
-      { error: 'An error occurred during password reset' },
+      { error: 'Failed to reset password' },
       { status: 500 }
     );
   }

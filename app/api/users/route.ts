@@ -1,20 +1,14 @@
 import { NextResponse } from 'next/server';
-import prisma from '../../../src/lib/prisma';
-import { hash } from 'bcryptjs';
+import { supabase } from '@/lib/supabase';
 
 export async function GET() {
   try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        createdAt: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, name, email, created_at')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
 
     return NextResponse.json(users);
   } catch (error) {
@@ -37,9 +31,12 @@ export async function DELETE(request: Request) {
       );
     }
 
-    await prisma.user.delete({
-      where: { id },
-    });
+    const { error } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
 
     return NextResponse.json({ message: 'User deleted successfully' });
   } catch (error) {
@@ -53,46 +50,32 @@ export async function DELETE(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { email, password, name } = body;
+    const { name, email, password } = await request.json();
 
-    if (!email || !password || !name) {
+    if (!name || !email || !password) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Name, email, and password are required' },
         { status: 400 }
       );
     }
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
+    const { data: user, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name,
+        },
+      },
     });
 
-    if (existingUser) {
-      return NextResponse.json(
-        { error: 'User already exists' },
-        { status: 400 }
-      );
-    }
+    if (error) throw error;
 
-    const hashedPassword = await hash(password, 12);
-
-    const user = await prisma.user.create({
-      data: {
-        email,
-        name,
-        password: hashedPassword
-      }
-    });
-
-    return NextResponse.json({
-      id: user.id,
-      email: user.email,
-      name: user.name
-    });
+    return NextResponse.json(user);
   } catch (error) {
     console.error('Error creating user:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to create user' },
       { status: 500 }
     );
   }
