@@ -15,6 +15,7 @@ export interface MarketData {
   fiftyTwoWeekLow?: number;
   averageVolume?: number;
   openPrice?: number;
+  previousClose?: number;
   error?: boolean;
 }
 

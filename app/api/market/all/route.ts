@@ -253,6 +253,7 @@ export async function GET() {
                 fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
                 averageVolume: quote.averageDailyVolume3Month,
                 openPrice: quote.regularMarketOpen,
+                previousClose: quote.regularMarketPreviousClose,
               };
               const segmentKey = getSegmentKey(asset.type);
               marketData[segmentKey].push(assetData);
