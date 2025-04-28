@@ -1,13 +1,12 @@
 {
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/generate-supabase-types.js && next build",
     "start": "next start",
     "lint": "next lint",
     "update-assets": "node scripts/update-assets.js",
     "generate-types": "node scripts/generate-types.js",
-    "generate-supabase-types": "node scripts/generate-supabase-types.js",
-    "prebuild": "npm run generate-supabase-types"
+    "generate-supabase-types": "node scripts/generate-supabase-types.js"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.2",
