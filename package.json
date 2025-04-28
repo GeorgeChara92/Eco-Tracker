@@ -4,7 +4,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "update-assets": "node scripts/update-assets.js"
+    "update-assets": "node scripts/update-assets.js",
+    "generate-types": "node scripts/generate-types.js"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.2",
