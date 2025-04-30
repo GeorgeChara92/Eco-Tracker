@@ -38,6 +38,19 @@ jobs:
         # Skip postinstall scripts for supabase
         npm install --no-save supabase@latest
         
+    - name: Verify environment variables
+      run: |
+        echo "Checking environment variables..."
+        if [ -z "$CRON_SECRET" ]; then
+          echo "Error: CRON_SECRET is not set"
+          exit 1
+        fi
+        if [ -z "$NEXT_PUBLIC_API_URL" ]; then
+          echo "Error: NEXT_PUBLIC_API_URL is not set"
+          exit 1
+        fi
+        echo "Environment variables are set"
+        
     - name: Run update script
       env:
         NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
@@ -48,6 +61,7 @@ jobs:
         echo "Starting asset update service at $(date)"
         echo "Current branch: $(git branch --show-current)"
         echo "GitHub event: ${{ github.event_name }}"
+        echo "API URL: $NEXT_PUBLIC_API_URL"
         # Kill any existing process
         pkill -f "node scripts/update-assets.js" || true
         # Run the script in the background
