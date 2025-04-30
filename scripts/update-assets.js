@@ -3,10 +3,20 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 const { createClient } = require('@supabase/supabase-js');
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 30000; // 30 seconds
 const CRON_SECRET = process.env.CRON_SECRET;
+
+// Initialize Supabase client
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error(`[${new Date().toISOString()}] Error: Supabase credentials not set`);
+  process.exit(1);
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function updateAssets(retryCount = 0) {
   console.log(`[${new Date().toISOString()}] Starting assets update... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
