@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getAllMarketData, MarketDataResponse } from '@/lib/yahoo-finance';
 import { headers } from 'next/headers';
 
-// This is the secret key that will be used to verify the request is coming from cron-job.org
+// This is the secret key that will be used to verify the request is coming from Vercel Cron
 const CRON_SECRET = process.env.CRON_SECRET;
 
 export const dynamic = 'force-dynamic';
@@ -11,25 +11,37 @@ export const maxDuration = 60; // Set maximum execution time to 60 seconds (Verc
 
 export async function GET(request: Request) {
   try {
+    console.log('Starting cron job execution...');
+    
     // Get the authorization header
     const headersList = headers();
     const authHeader = headersList.get('authorization');
 
+    // Log the presence of CRON_SECRET (but not its value)
+    console.log('CRON_SECRET present:', !!CRON_SECRET);
+    console.log('Auth header present:', !!authHeader);
+
     // Verify the secret key
     if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
-      console.error('Unauthorized cron job attempt');
+      console.error('Unauthorized cron job attempt:', {
+        hasSecret: !!CRON_SECRET,
+        hasAuthHeader: !!authHeader,
+        authHeaderLength: authHeader?.length
+      });
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    console.log('Starting asset update cron job...');
+    console.log('Authentication successful, proceeding with market data fetch...');
 
     if (!supabaseAdmin) {
+      console.error('Supabase client not initialized');
       throw new Error('Supabase client not initialized');
     }
 
+    console.log('Fetching market data...');
     // Fetch all market data with a timeout
     const marketData = await Promise.race([
       getAllMarketData(),
@@ -37,6 +49,8 @@ export async function GET(request: Request) {
         setTimeout(() => reject(new Error('Market data fetch timeout')), 30000)
       )
     ]) as MarketDataResponse;
+    
+    console.log('Market data fetched successfully, processing assets...');
     
     // Flatten all market data into a single array
     const allAssets = [
@@ -65,6 +79,8 @@ export async function GET(request: Request) {
       last_updated: new Date().toISOString()
     }));
 
+    console.log('Prepared assets for upsert, performing database operation...');
+
     // Perform the upsert operation
     const { data, error } = await supabaseAdmin
       .from('assets')
@@ -74,6 +90,7 @@ export async function GET(request: Request) {
       });
 
     if (error) {
+      console.error('Supabase upsert error:', error);
       throw error;
     }
 
@@ -87,6 +104,12 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error('Error in asset update cron job:', error);
+    // Log the full error object for better debugging
+    console.error('Full error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
     return NextResponse.json(
       { 
         success: false, 
