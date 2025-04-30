@@ -2,11 +2,14 @@ const https = require('https');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { createClient } = require('@supabase/supabase-js');
 
-const UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 30000; // 30 seconds
 
-async function updateAssets() {
-  console.log(`[${new Date().toISOString()}] Starting assets update...`);
+async function updateAssets(retryCount = 0) {
+  console.log(`[${new Date().toISOString()}] Starting assets update... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
+  
   try {
     const response = await fetch(`${API_URL}/api/assets/update`);
     const data = await response.json();
@@ -20,23 +23,34 @@ async function updateAssets() {
       lastUpdated: data.lastUpdated,
       failedSymbols: data.failedSymbols || []
     });
+
+    // Schedule next update
+    setTimeout(() => updateAssets(0), UPDATE_INTERVAL);
+    
   } catch (error) {
     console.error(`[${new Date().toISOString()}] Update failed:`, error.message);
-    if (error.response) {
-      console.error('Response status:', error.response.status);
-      console.error('Response data:', error.response.data);
+    
+    if (retryCount < MAX_RETRIES - 1) {
+      console.log(`[${new Date().toISOString()}] Retrying in ${RETRY_DELAY/1000} seconds...`);
+      setTimeout(() => updateAssets(retryCount + 1), RETRY_DELAY);
+    } else {
+      console.error(`[${new Date().toISOString()}] Max retries reached. Scheduling next update in ${UPDATE_INTERVAL/1000} seconds.`);
+      setTimeout(() => updateAssets(0), UPDATE_INTERVAL);
     }
   }
 }
 
-// Run initial update
-console.log(`[${new Date().toISOString()}] Starting asset update service...`);
-updateAssets().catch(error => {
-  console.error(`[${new Date().toISOString()}] Initial update failed:`, error);
+// Handle process termination
+process.on('SIGINT', () => {
+  console.log('\n[Graceful shutdown] Stopping asset update service...');
+  process.exit(0);
 });
 
-// Schedule regular updates
-setInterval(updateAssets, UPDATE_INTERVAL);
+process.on('SIGTERM', () => {
+  console.log('\n[Graceful shutdown] Stopping asset update service...');
+  process.exit(0);
+});
 
-// Keep the script running
-process.stdin.resume(); 
+// Start the update service
+console.log(`[${new Date().toISOString()}] Starting asset update service...`);
+updateAssets(); 

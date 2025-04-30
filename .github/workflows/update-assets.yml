@@ -2,12 +2,13 @@ name: Update Assets
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Run every 5 minutes
+    - cron: '*/5 * * * *'  # Run every 5 minutes to ensure the service is running
   workflow_dispatch:  # Allow manual triggering
 
 jobs:
   update-assets:
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # Set a timeout for the job
     
     steps:
     - uses: actions/checkout@v4
@@ -28,11 +29,43 @@ jobs:
         NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       run: |
-        echo "Starting asset update script..."
-        node scripts/update-assets.js
-        if [ $? -eq 0 ]; then
-          echo "Script completed successfully"
+        echo "Starting asset update service..."
+        # Kill any existing process
+        pkill -f "node scripts/update-assets.js" || true
+        # Run the script in the background
+        nohup node scripts/update-assets.js > update-assets.log 2>&1 &
+        # Wait a bit to ensure it started
+        sleep 10
+        # Check if the process is running
+        if ps aux | grep "node scripts/update-assets.js" | grep -v grep; then
+          echo "Asset update service is running"
+          # Save the PID to a file for future reference
+          echo $! > update-assets.pid
+          # Show the last few lines of the log
+          tail -n 20 update-assets.log
         else
-          echo "Script failed"
+          echo "Failed to start asset update service"
           exit 1
-        fi 
+        fi
+
+    - name: Notify on failure
+      if: failure()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { data: issues } = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'open',
+            labels: ['asset-update-failure']
+          });
+          
+          if (issues.length === 0) {
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Asset Update Service Failure',
+              body: `The asset update service failed to start or encountered an error. Please check the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`,
+              labels: ['asset-update-failure']
+            });
+          } 
