@@ -1,12 +1,14 @@
 import axios from 'axios';
 
+export type AssetType = 'stock' | 'index' | 'commodity' | 'crypto' | 'forex' | 'fund';
+
 export interface MarketData {
   symbol: string;
   name: string;
   price: number;
   change: number;
   changePercent: number;
-  type: 'stock' | 'index' | 'commodity' | 'crypto' | 'forex' | 'fund';
+  type: AssetType;
   volume?: number;
   marketCap?: number;
   dayHigh?: number;
