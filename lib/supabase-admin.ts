@@ -16,5 +16,8 @@ export const supabaseAdmin = createClient<Database>(
       autoRefreshToken: false,
       persistSession: false,
     },
+    db: {
+      schema: 'public'
+    }
   }
 ); 

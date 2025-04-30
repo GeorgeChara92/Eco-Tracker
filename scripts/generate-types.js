@@ -1,12 +1,18 @@
 const { execSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 
-console.log('Generating Prisma types...');
+// Ensure the types directory exists
+const typesDir = path.join(process.cwd(), 'types');
+if (!fs.existsSync(typesDir)) {
+  fs.mkdirSync(typesDir, { recursive: true });
+}
 
+// Generate types using Supabase CLI
 try {
-  // Run prisma generate to create types
-  execSync('npx prisma generate', { stdio: 'inherit' });
-  
+  execSync('npx supabase gen types typescript --project-id your-project-id > types/supabase.ts', {
+    stdio: 'inherit',
+  });
   console.log('Types generated successfully!');
 } catch (error) {
   console.error('Error generating types:', error);

@@ -4,9 +4,6 @@ const nextConfig = {
   images: {
     domains: ['images.unsplash.com', 'source.unsplash.com'],
   },
-  experimental: {
-    serverActions: true,
-  },
   // Ensure proper handling of environment variables
   env: {
     SUPABASE_URL: process.env.SUPABASE_URL,
