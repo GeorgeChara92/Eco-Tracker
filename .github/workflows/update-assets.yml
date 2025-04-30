@@ -16,6 +16,12 @@ jobs:
     timeout-minutes: 10  # Set a timeout for the job
     
     steps:
+    - name: Check current time
+      run: |
+        echo "Current time: $(date)"
+        echo "GitHub Actions environment:"
+        env | grep GITHUB
+        
     - uses: actions/checkout@v4
     
     - name: Setup Node.js
@@ -41,6 +47,7 @@ jobs:
       run: |
         echo "Starting asset update service at $(date)"
         echo "Current branch: $(git branch --show-current)"
+        echo "GitHub event: ${{ github.event_name }}"
         # Kill any existing process
         pkill -f "node scripts/update-assets.js" || true
         # Run the script in the background
