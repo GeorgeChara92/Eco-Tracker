@@ -42,16 +42,28 @@ jobs:
       env:
         CRON_SECRET: ${{ secrets.CRON_SECRET }}
         NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       run: |
         echo "Checking environment variables..."
         echo "CRON_SECRET length: ${#CRON_SECRET}"
         echo "NEXT_PUBLIC_API_URL: $NEXT_PUBLIC_API_URL"
+        echo "NEXT_PUBLIC_SUPABASE_URL length: ${#NEXT_PUBLIC_SUPABASE_URL}"
+        echo "SUPABASE_SERVICE_ROLE_KEY length: ${#SUPABASE_SERVICE_ROLE_KEY}"
         if [ -z "$CRON_SECRET" ]; then
           echo "Error: CRON_SECRET is not set"
           exit 1
         fi
         if [ -z "$NEXT_PUBLIC_API_URL" ]; then
           echo "Error: NEXT_PUBLIC_API_URL is not set"
+          exit 1
+        fi
+        if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+          echo "Error: NEXT_PUBLIC_SUPABASE_URL is not set"
+          exit 1
+        fi
+        if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+          echo "Error: SUPABASE_SERVICE_ROLE_KEY is not set"
           exit 1
         fi
         echo "Environment variables are set"
@@ -68,6 +80,8 @@ jobs:
         echo "GitHub event: ${{ github.event_name }}"
         echo "API URL: $NEXT_PUBLIC_API_URL"
         echo "CRON_SECRET length: ${#CRON_SECRET}"
+        echo "NEXT_PUBLIC_SUPABASE_URL length: ${#NEXT_PUBLIC_SUPABASE_URL}"
+        echo "SUPABASE_SERVICE_ROLE_KEY length: ${#SUPABASE_SERVICE_ROLE_KEY}"
         # Kill any existing process
         pkill -f "node scripts/update-assets.js" || true
         # Run the script in the background
