@@ -4,6 +4,7 @@ import { getAllMarketData, MarketDataResponse } from '@/lib/yahoo-finance';
 import { headers } from 'next/headers';
 
 // This is the secret key that will be used to verify the request is coming from Vercel Cron
+// Triggering new deployment - 2024-04-30
 const CRON_SECRET = process.env.CRON_SECRET;
 
 export const dynamic = 'force-dynamic';
