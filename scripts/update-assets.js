@@ -6,12 +6,22 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 30000; // 30 seconds
+const CRON_SECRET = process.env.CRON_SECRET;
 
 async function updateAssets(retryCount = 0) {
   console.log(`[${new Date().toISOString()}] Starting assets update... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
   
   try {
-    const response = await fetch(`${API_URL}/api/assets/update`);
+    if (!CRON_SECRET) {
+      throw new Error('CRON_SECRET environment variable is not set');
+    }
+
+    const response = await fetch(`${API_URL}/api/cron/update-assets`, {
+      headers: {
+        'Authorization': `Bearer ${CRON_SECRET}`
+      }
+    });
+    
     const data = await response.json();
     
     if (!response.ok) {
@@ -19,9 +29,10 @@ async function updateAssets(retryCount = 0) {
     }
     
     console.log(`[${new Date().toISOString()}] Update successful:`, {
-      totalAssets: data.totalAssets,
-      lastUpdated: data.lastUpdated,
-      failedSymbols: data.failedSymbols || []
+      success: data.success,
+      message: data.message,
+      count: data.count,
+      timestamp: data.timestamp
     });
 
     // Schedule next update
