@@ -39,8 +39,13 @@ jobs:
         npm install --no-save supabase@latest
         
     - name: Verify environment variables
+      env:
+        CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
       run: |
         echo "Checking environment variables..."
+        echo "CRON_SECRET length: ${#CRON_SECRET}"
+        echo "NEXT_PUBLIC_API_URL: $NEXT_PUBLIC_API_URL"
         if [ -z "$CRON_SECRET" ]; then
           echo "Error: CRON_SECRET is not set"
           exit 1
@@ -62,6 +67,7 @@ jobs:
         echo "Current branch: $(git branch --show-current)"
         echo "GitHub event: ${{ github.event_name }}"
         echo "API URL: $NEXT_PUBLIC_API_URL"
+        echo "CRON_SECRET length: ${#CRON_SECRET}"
         # Kill any existing process
         pkill -f "node scripts/update-assets.js" || true
         # Run the script in the background
