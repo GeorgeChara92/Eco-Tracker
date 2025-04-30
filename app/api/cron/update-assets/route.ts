@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { getAllMarketData } from '@/lib/yahoo-finance';
+import { getAllMarketData, MarketDataResponse } from '@/lib/yahoo-finance';
 import { headers } from 'next/headers';
 
 // This is the secret key that will be used to verify the request is coming from cron-job.org
 const CRON_SECRET = process.env.CRON_SECRET;
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // Set maximum execution time to 5 minutes
+export const maxDuration = 60; // Set maximum execution time to 60 seconds (Vercel Hobby plan limit)
 
 export async function GET(request: Request) {
   try {
@@ -30,8 +30,13 @@ export async function GET(request: Request) {
       throw new Error('Supabase client not initialized');
     }
 
-    // Fetch all market data
-    const marketData = await getAllMarketData();
+    // Fetch all market data with a timeout
+    const marketData = await Promise.race([
+      getAllMarketData(),
+      new Promise<MarketDataResponse>((_, reject) => 
+        setTimeout(() => reject(new Error('Market data fetch timeout')), 30000)
+      )
+    ]) as MarketDataResponse;
     
     // Flatten all market data into a single array
     const allAssets = [
