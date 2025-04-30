@@ -10,55 +10,10 @@ if (!fs.existsSync(typesDir)) {
 
 // Get project ID from Supabase URL
 const supabaseUrl = process.env.SUPABASE_URL;
-if (!supabaseUrl) {
-  console.log('SUPABASE_URL environment variable is not set, using fallback types');
-  // Create a basic types file if it doesn't exist
-  if (!fs.existsSync(path.join(typesDir, 'supabase.ts'))) {
-    fs.writeFileSync(
-      path.join(typesDir, 'supabase.ts'),
-      `export type Database = {
-  public: {
-    Tables: {
-      users: {
-        Row: {
-          id: string
-          email: string
-          name: string | null
-          password: string
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          email: string
-          name?: string | null
-          password: string
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          email?: string
-          name?: string | null
-          password?: string
-          created_at?: string
-          updated_at?: string
-        }
-      }
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      [_ in never]: never
-    }
-    Enums: {
-      [_ in never]: never
-    }
-  }
-}`
-    );
-  }
+const accessToken = process.env.SUPABASE_ACCESS_TOKEN;
+
+if (!supabaseUrl || !accessToken) {
+  console.log('Missing Supabase credentials, using fallback types');
   process.exit(0);
 }
 
@@ -68,6 +23,10 @@ const projectId = supabaseUrl.split('.')[0].split('//')[1];
 try {
   execSync(`npx supabase gen types typescript --project-id ${projectId} > types/supabase.ts`, {
     stdio: 'inherit',
+    env: {
+      ...process.env,
+      SUPABASE_ACCESS_TOKEN: accessToken
+    }
   });
   console.log('Types generated successfully!');
 } catch (error) {
