@@ -2,8 +2,13 @@ name: Update Assets
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Run every 5 minutes to ensure the service is running
+    - cron: '*/5 * * * *'  # Run every 5 minutes
   workflow_dispatch:  # Allow manual triggering
+  push:
+    branches: [ main ]  # Run on pushes to main branch
+    paths:
+      - 'scripts/update-assets.js'
+      - '.github/workflows/update-assets.yml'
 
 jobs:
   update-assets:
@@ -34,7 +39,8 @@ jobs:
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         CRON_SECRET: ${{ secrets.CRON_SECRET }}
       run: |
-        echo "Starting asset update service..."
+        echo "Starting asset update service at $(date)"
+        echo "Current branch: $(git branch --show-current)"
         # Kill any existing process
         pkill -f "node scripts/update-assets.js" || true
         # Run the script in the background
