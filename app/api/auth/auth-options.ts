@@ -2,16 +2,46 @@ import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { createClient } from '@supabase/supabase-js';
 
+// Check for required environment variables
+const requiredEnvVars = {
+  url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  authSecret: process.env.AUTH_SECRET
+};
+
+// Log environment variable status (without exposing sensitive data)
+console.log('Environment Variables Status:', {
+  NEXT_PUBLIC_SUPABASE_URL: requiredEnvVars.url ? 'set' : 'missing',
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: requiredEnvVars.anonKey ? 'set' : 'missing',
+  SUPABASE_SERVICE_ROLE_KEY: requiredEnvVars.serviceKey ? 'set' : 'missing',
+  AUTH_SECRET: requiredEnvVars.authSecret ? 'set' : 'missing'
+});
+
+// Validate environment variables
+const missingVars = Object.entries(requiredEnvVars)
+  .filter(([_, value]) => !value)
+  .map(([key]) => key);
+
+if (missingVars.length > 0) {
+  console.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+}
+
+if (!requiredEnvVars.url || !requiredEnvVars.anonKey || !requiredEnvVars.serviceKey || !requiredEnvVars.authSecret) {
+  throw new Error('Required environment variables are not set');
+}
+
 // Create a client with the anon key for auth operations
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  requiredEnvVars.url,
+  requiredEnvVars.anonKey
 );
 
 // Create a client with the service role key for database operations
 const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  requiredEnvVars.url,
+  requiredEnvVars.serviceKey
 );
 
 declare module "next-auth" {
@@ -33,7 +63,7 @@ declare module "next-auth/jwt" {
 }
 
 export const authOptions: NextAuthOptions = {
-  secret: process.env.AUTH_SECRET,
+  secret: requiredEnvVars.authSecret,
   providers: [
     CredentialsProvider({
       name: 'Credentials',
