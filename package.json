@@ -1,11 +1,12 @@
 {
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "update-assets": "node scripts/update-assets.js",
-    "generate-types": "node scripts/generate-types.js"
+    "generate-types": "node scripts/generate-types.js",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.2",
