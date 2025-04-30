@@ -11,8 +11,55 @@ if (!fs.existsSync(typesDir)) {
 // Get project ID from Supabase URL
 const supabaseUrl = process.env.SUPABASE_URL;
 if (!supabaseUrl) {
-  console.error('SUPABASE_URL environment variable is not set');
-  process.exit(1);
+  console.log('SUPABASE_URL environment variable is not set, using fallback types');
+  // Create a basic types file if it doesn't exist
+  if (!fs.existsSync(path.join(typesDir, 'supabase.ts'))) {
+    fs.writeFileSync(
+      path.join(typesDir, 'supabase.ts'),
+      `export type Database = {
+  public: {
+    Tables: {
+      users: {
+        Row: {
+          id: string
+          email: string
+          name: string | null
+          password: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          email: string
+          name?: string | null
+          password: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          name?: string | null
+          password?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+  }
+}`
+    );
+  }
+  process.exit(0);
 }
 
 const projectId = supabaseUrl.split('.')[0].split('//')[1];
