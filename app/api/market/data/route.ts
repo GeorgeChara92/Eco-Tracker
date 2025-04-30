@@ -16,11 +16,11 @@ export interface MarketData {
 }
 
 export async function GET(request: NextRequest) {
-  try {
-    const searchParams = request.nextUrl.searchParams;
-    const symbol = searchParams.get('symbol');
-    const type = searchParams.get('type');
+  const searchParams = request.nextUrl.searchParams;
+  const symbol = searchParams.get('symbol');
+  const type = searchParams.get('type');
 
+  try {
     if (!symbol || !type) {
       return NextResponse.json(
         { error: 'Symbol and type parameters are required' },
@@ -29,10 +29,21 @@ export async function GET(request: NextRequest) {
     }
 
     if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: 'Database client not initialized' },
-        { status: 500 }
-      );
+      console.error('Supabase client not initialized. Check environment variables.');
+      // Return a fallback response instead of error
+      return NextResponse.json({
+        symbol: symbol,
+        name: symbol,
+        price: 0,
+        change: 0,
+        changePercent: 0,
+        volume: 0,
+        marketCap: 0,
+        dayHigh: 0,
+        dayLow: 0,
+        type: type as MarketData['type'],
+        error: true
+      });
     }
 
     const formattedSymbol = formatSymbol(symbol, type);
@@ -47,17 +58,39 @@ export async function GET(request: NextRequest) {
     console.log('Fetched asset from DB:', asset);
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to fetch market data' },
-        { status: 500 }
-      );
+      console.error('Database error:', error);
+      // Return a fallback response instead of error
+      return NextResponse.json({
+        symbol: symbol,
+        name: symbol,
+        price: 0,
+        change: 0,
+        changePercent: 0,
+        volume: 0,
+        marketCap: 0,
+        dayHigh: 0,
+        dayLow: 0,
+        type: type as MarketData['type'],
+        error: true
+      });
     }
 
     if (!asset) {
-      return NextResponse.json(
-        { error: 'Asset not found' },
-        { status: 404 }
-      );
+      console.log('Asset not found:', formattedSymbol);
+      // Return a fallback response instead of error
+      return NextResponse.json({
+        symbol: symbol,
+        name: symbol,
+        price: 0,
+        change: 0,
+        changePercent: 0,
+        volume: 0,
+        marketCap: 0,
+        dayHigh: 0,
+        dayLow: 0,
+        type: type as MarketData['type'],
+        error: true
+      });
     }
 
     const marketData: MarketData = {
@@ -79,10 +112,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(marketData);
   } catch (error) {
     console.error('Error fetching market data:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    // Return a fallback response instead of error
+    return NextResponse.json({
+      symbol: symbol || 'unknown',
+      name: symbol || 'unknown',
+      price: 0,
+      change: 0,
+      changePercent: 0,
+      volume: 0,
+      marketCap: 0,
+      dayHigh: 0,
+      dayLow: 0,
+      type: (type as MarketData['type']) || 'stock',
+      error: true
+    });
   }
 }
 
