@@ -11,6 +11,9 @@ const supabase = createClient(
     auth: {
       autoRefreshToken: false,
       persistSession: false
+    },
+    db: {
+      schema: 'public'
     }
   }
 );
@@ -124,7 +127,7 @@ export async function GET(request: Request) {
           console.log(`Updating Supabase for ${symbol}:`, {
             price: asset.price,
             change: asset.change,
-            volume: asset.volume
+            change_percent: asset.change_percent
           });
 
           // Update or insert the asset in Supabase
