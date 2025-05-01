@@ -73,7 +73,7 @@ export async function GET(request: Request) {
 
     console.log(`Fetched ${allAssets.length} assets. Starting database update...`);
 
-    // Prepare the assets for upsert
+    // Prepare the assets for update
     const assetsToUpsert = allAssets.map(asset => ({
       symbol: asset.symbol,
       name: asset.name,
@@ -88,18 +88,30 @@ export async function GET(request: Request) {
       last_updated: new Date().toISOString()
     }));
 
-    console.log('Prepared assets for upsert, performing database operation...');
+    console.log('Prepared assets for update, performing database operation...');
 
-    // Perform the upsert operation
-    const { data, error } = await supabaseAdmin
+    // Get all symbols we're about to insert
+    const symbols = assetsToUpsert.map(asset => asset.symbol);
+    
+    // First delete existing records for these symbols
+    const { error: deleteError } = await supabaseAdmin
       .from('assets')
-      .upsert(assetsToUpsert, {
-        onConflict: 'symbol'
-      });
+      .delete()
+      .in('symbol', symbols);
 
-    if (error) {
-      console.error('Supabase upsert error:', error);
-      throw new Error(`Database update failed: ${error.message}`);
+    if (deleteError) {
+      console.error('Error deleting existing assets:', deleteError);
+      throw new Error(`Database delete failed: ${deleteError.message}`);
+    }
+
+    // Then insert the new records
+    const { data, error: insertError } = await supabaseAdmin
+      .from('assets')
+      .insert(assetsToUpsert);
+
+    if (insertError) {
+      console.error('Error inserting new assets:', insertError);
+      throw new Error(`Database insert failed: ${insertError.message}`);
     }
 
     console.log('Asset update completed successfully');
