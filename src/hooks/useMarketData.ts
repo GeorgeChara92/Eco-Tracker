@@ -21,8 +21,8 @@ async function fetchMarketData() {
     return cachedData.data;
   }
 
-  console.log('Fetching fresh market data');
-  const response = await fetch('/api/market/all');
+  console.log('Fetching fresh market data from Supabase');
+  const response = await fetch('/api/market/supabase');
   if (!response.ok) {
     throw new Error('Failed to fetch market data');
   }
@@ -38,31 +38,19 @@ async function fetchMarketData() {
   return data;
 }
 
-// Hook to fetch all market data
-export const useAllMarketData = () => {
-  return useQuery<MarketDataResponse, Error>({
-    queryKey: ['allMarketData'],
+// Custom hook for fetching market data
+export function useAllMarketData() {
+  return useQuery<MarketDataResponse>({
+    queryKey: ['marketData'],
     queryFn: fetchMarketData,
     refetchInterval: REFETCH_INTERVAL,
-    refetchIntervalInBackground: true,
     staleTime: STALE_TIME,
     gcTime: GC_TIME,
-    refetchOnWindowFocus: true,
     retry: RETRY_COUNT,
-    select: (data) => {
-      console.log('Market data updated:', {
-        timestamp: new Date().toISOString(),
-        stocksCount: data.stocks?.length,
-        indicesCount: data.indices?.length,
-        cryptoCount: data.crypto?.length
-      });
-      return {
-        ...data,
-        _timestamp: Date.now() // Force React to recognize data changes
-      };
-    }
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true
   });
-};
+}
 
 // Hook to fetch single market data
 export const useMarketData = (symbol: string) => {
