@@ -130,8 +130,9 @@ export async function GET(request: Request) {
           // Update or insert the asset in Supabase
           const { error } = await supabase
             .from('assets')
-            .upsert(asset)
-            .eq('symbol', symbol);
+            .upsert(asset, {
+              onConflict: 'symbol'
+            });
 
           if (error) {
             console.error(`Error updating ${symbol} in Supabase:`, error);
