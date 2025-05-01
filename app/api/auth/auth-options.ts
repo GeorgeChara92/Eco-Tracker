@@ -7,7 +7,7 @@ const requiredEnvVars = {
   url: process.env.NEXT_PUBLIC_SUPABASE_URL,
   anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-  authSecret: process.env.AUTH_SECRET
+  authSecret: process.env.NEXTAUTH_SECRET
 };
 
 // Log environment variable status (without exposing sensitive data)
@@ -15,7 +15,7 @@ console.log('Environment Variables Status:', {
   NEXT_PUBLIC_SUPABASE_URL: requiredEnvVars.url ? 'set' : 'missing',
   NEXT_PUBLIC_SUPABASE_ANON_KEY: requiredEnvVars.anonKey ? 'set' : 'missing',
   SUPABASE_SERVICE_ROLE_KEY: requiredEnvVars.serviceKey ? 'set' : 'missing',
-  AUTH_SECRET: requiredEnvVars.authSecret ? 'set' : 'missing'
+  NEXTAUTH_SECRET: requiredEnvVars.authSecret ? 'set' : 'missing'
 });
 
 // Validate environment variables

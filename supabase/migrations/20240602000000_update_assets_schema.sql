@@ -1,5 +1,6 @@
 -- First, drop the foreign key constraint from alerts
 ALTER TABLE alerts DROP CONSTRAINT IF EXISTS alerts_asset_id_fkey;
+ALTER TABLE alerts DROP CONSTRAINT IF EXISTS alerts_asset_symbol_fkey;
 
 -- Drop existing triggers and functions
 DROP TRIGGER IF EXISTS check_alerts_after_price_update ON assets;
@@ -72,10 +73,37 @@ CREATE TABLE IF NOT EXISTS assets (
 -- Create index on type
 CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(type);
 
--- Add the foreign key constraint
-ALTER TABLE alerts DROP CONSTRAINT IF EXISTS alerts_asset_symbol_fkey;
-ALTER TABLE alerts ADD CONSTRAINT alerts_asset_symbol_fkey 
-  FOREIGN KEY (asset_symbol) REFERENCES assets(symbol) ON DELETE CASCADE;
+-- Add the foreign key constraint only if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM information_schema.table_constraints 
+    WHERE constraint_name = 'alerts_asset_symbol_fkey'
+  ) THEN
+    ALTER TABLE alerts ADD CONSTRAINT alerts_asset_symbol_fkey 
+      FOREIGN KEY (asset_symbol) REFERENCES assets(symbol) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- Drop existing RLS policies for alerts
+DROP POLICY IF EXISTS "Enable read access for authenticated users" ON public.alerts;
+DROP POLICY IF EXISTS "Enable insert for authenticated users" ON public.alerts;
+DROP POLICY IF EXISTS "Enable update for authenticated users" ON public.alerts;
+DROP POLICY IF EXISTS "Enable delete for authenticated users" ON public.alerts;
+
+-- Create new RLS policies for alerts
+CREATE POLICY "Enable read access for authenticated users" ON public.alerts
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Enable insert for authenticated users" ON public.alerts
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Enable update for authenticated users" ON public.alerts
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Enable delete for authenticated users" ON public.alerts
+    FOR DELETE USING (auth.uid() = user_id);
 
 -- Create new function to check alerts when price changes
 CREATE OR REPLACE FUNCTION check_alerts_on_price_change()

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FaBell, FaBellSlash } from 'react-icons/fa';
-import { supabase } from '@/lib/supabase';
+import { useSession } from 'next-auth/react';
 import AlertModal from './AlertModal';
 
 interface AlertBellProps {
@@ -11,76 +11,80 @@ interface AlertBellProps {
 }
 
 export default function AlertBell({ assetId, assetName, currentPrice, onAlertChange }: AlertBellProps) {
+  const { data: session } = useSession();
   const [hasAlerts, setHasAlerts] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
-    checkAlerts();
-  }, [assetId]);
+    if (session) {
+      checkAlerts();
+    }
+  }, [assetId, session]);
 
   const checkAlerts = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const response = await fetch('/api/alerts', {
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch alerts');
+      }
 
-      const { data: alerts, error } = await supabase
-        .from('alerts')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('asset_id', assetId)
-        .eq('is_active', true);
+      const alerts = await response.json();
+      console.log('Alerts data:', alerts);
+      
+      if (!Array.isArray(alerts)) {
+        console.error('Alerts is not an array:', alerts);
+        return;
+      }
 
-      if (error) throw error;
-
-      const hasActiveAlerts = alerts && alerts.length > 0;
+      const hasActiveAlerts = alerts.some((alert: any) => {
+        const alertSymbol = alert.asset_symbol?.toUpperCase();
+        const currentSymbol = assetId?.toUpperCase();
+        const isMatch = alertSymbol === currentSymbol && alert.is_active;
+        console.log('Checking alert:', {
+          alertSymbol,
+          currentSymbol,
+          isActive: alert.is_active,
+          isMatch
+        });
+        return isMatch;
+      });
+      
+      console.log('Setting hasAlerts to:', hasActiveAlerts);
       setHasAlerts(hasActiveAlerts);
       onAlertChange?.(hasActiveAlerts);
     } catch (error) {
       console.error('Error checking alerts:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
-  const toggleAlert = async () => {
-    if (hasAlerts) {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { error } = await supabase
-          .from('alerts')
-          .update({ is_active: false })
-          .eq('user_id', user.id)
-          .eq('asset_id', assetId);
-
-        if (error) throw error;
-        setHasAlerts(false);
-        onAlertChange?.(false);
-      } catch (error) {
-        console.error('Error toggling alert:', error);
-      }
-    } else {
-      setShowModal(true);
+  const toggleAlert = () => {
+    if (!session) {
+      console.log('User not authenticated');
+      return;
     }
+    setShowModal(true);
   };
 
   const handleAlertCreated = () => {
-    setHasAlerts(true);
-    onAlertChange?.(true);
+    console.log('Alert created, checking alerts');
+    checkAlerts();
   };
 
-  if (loading) {
-    return <div className="w-6 h-6 animate-pulse bg-gray-200 rounded-full" />;
-  }
+  const handleAlertDeactivated = () => {
+    console.log('Alert deactivated, checking alerts');
+    checkAlerts();
+  };
 
   return (
-    <>
+    <div className="relative">
       <button
         onClick={toggleAlert}
         className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-        title={hasAlerts ? "Remove alert" : "Set alert"}
+        title={hasAlerts ? "Manage alert" : "Set alert"}
+        disabled={!session}
       >
         {hasAlerts ? (
           <FaBell className="w-5 h-5 text-yellow-500" />
@@ -96,7 +100,8 @@ export default function AlertBell({ assetId, assetName, currentPrice, onAlertCha
         assetName={assetName}
         currentPrice={currentPrice}
         onAlertCreated={handleAlertCreated}
+        onAlertDeactivated={handleAlertDeactivated}
       />
-    </>
+    </div>
   );
 } 
