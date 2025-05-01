@@ -3,7 +3,7 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 
 // Ensure API URL ends with a slash
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000').replace(/\/$/, '');
-const UPDATE_INTERVAL = 15 * 1000; // 15 seconds in milliseconds
+const UPDATE_INTERVAL = 60 * 1000; // 1 minute in milliseconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 30000; // 30 seconds
 const CRON_SECRET = process.env.CRON_SECRET;

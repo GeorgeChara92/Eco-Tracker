@@ -78,16 +78,26 @@ function getMarketType(category: keyof typeof MARKET_SYMBOLS): MarketData['type'
 
 export async function GET(request: Request) {
   try {
+    // Debug logging
+    console.log('Received request to update-assets endpoint');
+    console.log('Request headers:', {
+      authorization: request.headers.get('authorization'),
+      'content-type': request.headers.get('content-type')
+    });
+
     // Verify the request is from our cron job
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.error('Unauthorized request: No auth header');
+      console.error('Unauthorized request: No auth header or invalid format');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const token = authHeader.split(' ')[1];
+    console.log('Token received:', token ? '***' + token.slice(-4) : 'none');
+    console.log('Expected CRON_SECRET:', process.env.CRON_SECRET ? '***' + process.env.CRON_SECRET.slice(-4) : 'not set');
+
     if (token !== process.env.CRON_SECRET) {
-      console.error('Unauthorized request: Invalid token');
+      console.error('Unauthorized request: Token mismatch');
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 

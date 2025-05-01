@@ -6,7 +6,8 @@
     "lint": "next lint",
     "update-assets": "node scripts/update-assets.js",
     "generate-types": "node scripts/generate-types.js",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test-cron": "node scripts/test-cron-endpoint.js"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.2",
@@ -42,6 +43,7 @@
     "@types/react": "^18.2.57",
     "@types/react-dom": "^18.2.19",
     "autoprefixer": "^10.4.17",
+    "dotenv": "^16.5.0",
     "next-themes": "^0.4.6",
     "postcss": "^8.4.35",
     "postcss-import": "^16.1.0",
