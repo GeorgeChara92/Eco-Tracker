@@ -153,7 +153,6 @@ export default function MarketSegment({ title, data, onAssetSelect }: MarketSegm
               key={asset.symbol}
               data={asset}
               onClick={() => onAssetSelect(asset)}
-              hasActiveAlerts={false}
             />
           ))}
         </div>
@@ -179,7 +178,6 @@ export default function MarketSegment({ title, data, onAssetSelect }: MarketSegm
                     <MarketCard
                       data={asset}
                       onClick={() => onAssetSelect(asset)}
-                      hasActiveAlerts={false}
                     />
                   </motion.div>
                 ))}
