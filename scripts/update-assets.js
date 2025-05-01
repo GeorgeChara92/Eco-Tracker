@@ -11,12 +11,22 @@ const RETRY_DELAY = 30000; // 30 seconds
 const CRON_SECRET = process.env.CRON_SECRET;
 
 // Initialize Supabase client
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error(`[${new Date().toISOString()}] Error: Supabase credentials not set`);
+let supabase;
+try {
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error('Supabase credentials not set');
+  }
+  supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+  console.log(`[${new Date().toISOString()}] Supabase client initialized successfully`);
+} catch (error) {
+  console.error(`[${new Date().toISOString()}] Error initializing Supabase client:`, error.message);
   process.exit(1);
 }
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function updateAssets(retryCount = 0) {
   console.log(`[${new Date().toISOString()}] Starting assets update... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
