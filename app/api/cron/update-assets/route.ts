@@ -117,8 +117,12 @@ export async function GET(req: Request) {
           // Update or insert the asset in Supabase
           const { error } = await supabase
             .from('assets')
-            .upsert(asset, {
-              onConflict: 'symbol'
+            .upsert({
+              ...asset,
+              force_update: true
+            }, {
+              onConflict: 'symbol',
+              ignoreDuplicates: false
             });
 
           if (error) {

@@ -54,12 +54,21 @@ async function updateAssets(retryCount = 0) {
       throw new Error(`API Error: ${data.error || 'Unknown error'} - ${data.details || 'No details provided'}`);
     }
     
-    console.log(`[${new Date().toISOString()}] Update successful:`, {
-      success: data.success,
-      message: data.message,
-      count: data.count,
-      timestamp: data.timestamp
-    });
+    if (!data.success || data.count === 0) {
+      console.warn(`[${new Date().toISOString()}] Update completed but no assets were updated:`, {
+        success: data.success,
+        message: data.message,
+        count: data.count,
+        timestamp: data.timestamp
+      });
+    } else {
+      console.log(`[${new Date().toISOString()}] Update successful:`, {
+        success: data.success,
+        message: data.message,
+        count: data.count,
+        timestamp: data.timestamp
+      });
+    }
 
     // Schedule next update
     setTimeout(() => updateAssets(0), UPDATE_INTERVAL);

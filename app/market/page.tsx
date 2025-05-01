@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
 import MarketSegment from '@/components/ui/MarketSegment';
 import MarketDetails from '@/components/ui/MarketDetails';
-import { useAllMarketData } from '@/hooks/useMarketData';
+import { useAllMarketData } from '@/src/hooks/useMarketData';
 import { MarketData } from '@/lib/yahoo-finance';
 import RefreshNotification from '@/components/ui/RefreshNotification';
 import { FaSpinner } from 'react-icons/fa';
