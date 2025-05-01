@@ -118,8 +118,7 @@ export async function GET(request: Request) {
             market_cap: quote.marketCap || 0,
             day_high: quote.regularMarketDayHigh || 0,
             day_low: quote.regularMarketDayLow || 0,
-            last_updated: timestamp,
-            normalized_symbol: symbol.replace(/[-=].*$/, '')
+            last_updated: timestamp
           };
 
           console.log(`Updating Supabase for ${symbol}:`, {
