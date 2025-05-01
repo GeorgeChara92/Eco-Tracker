@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getAllMarketData, getQuote, marketSymbols, MarketData, AssetType, MarketDataResponse } from '@/lib/yahoo-finance';
+import { MarketDataResponse } from '@/lib/yahoo-finance';
 
 // Cache configuration
 const CACHE_DURATION = 15 * 1000; // 15 seconds
@@ -17,7 +17,11 @@ export const useAllMarketData = () => {
         return cachedData.data;
       }
 
-      const data = await getAllMarketData();
+      const response = await fetch('/api/market/all');
+      if (!response.ok) {
+        throw new Error('Failed to fetch market data');
+      }
+      const data = await response.json();
       
       // Update cache
       marketDataCache.set(cacheKey, {

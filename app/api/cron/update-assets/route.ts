@@ -1,141 +1,92 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '../../../../src/lib/supabase-admin';
-import { getAllMarketData, MarketDataResponse } from '../../../../lib/yahoo-finance';
 import { headers } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
+import yahooFinance from 'yahoo-finance2';
 
-// This is the secret key that will be used to verify the request is coming from Vercel Cron
-// Triggering new deployment - 2024-04-30
-const CRON_SECRET = process.env.CRON_SECRET;
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Set maximum execution time to 60 seconds (Vercel Hobby plan limit)
+// Verify the cron secret
+function isAuthorized(req: Request) {
+  const headersList = headers();
+  const authHeader = headersList.get('authorization');
+  if (!authHeader) return false;
+  
+  const token = authHeader.split(' ')[1];
+  return token === process.env.CRON_SECRET;
+}
 
-export async function GET(request: Request) {
+export async function GET(req: Request) {
+  console.log('Starting assets update...');
+  
+  // Verify authorization
+  if (!isAuthorized(req)) {
+    console.error('Unauthorized request');
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
-    console.log('Starting cron job execution...');
-    
-    // Get the authorization header
-    const headersList = headers();
-    const authHeader = headersList.get('authorization');
-
-    // Log the presence of CRON_SECRET (but not its value)
-    console.log('CRON_SECRET present:', !!CRON_SECRET);
-    console.log('Auth header present:', !!authHeader);
-    console.log('Supabase URL present:', !!process.env.NEXT_PUBLIC_SUPABASE_URL);
-    console.log('Supabase service key present:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-    // Verify the secret key
-    if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
-      console.error('Unauthorized cron job attempt:', {
-        hasSecret: !!CRON_SECRET,
-        hasAuthHeader: !!authHeader,
-        authHeaderLength: authHeader?.length
-      });
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    console.log('Authentication successful, proceeding with market data fetch...');
-
-    if (!supabaseAdmin) {
-      console.error('Supabase client not initialized');
-      throw new Error('Supabase client not initialized');
-    }
-
-    console.log('Fetching market data...');
-    let marketData: MarketDataResponse;
-    try {
-      marketData = await getAllMarketData();
-      console.log('Market data fetched successfully:', {
-        stocks: marketData.stocks.length,
-        indices: marketData.indices.length,
-        commodities: marketData.commodities.length,
-        crypto: marketData.crypto.length,
-        forex: marketData.forex.length,
-        funds: marketData.funds.length
-      });
-    } catch (error) {
-      console.error('Error fetching market data:', error);
-      throw new Error(`Failed to fetch market data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    // Fetch market data from our API endpoint
+    const marketDataResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/market/all`);
+    if (!marketDataResponse.ok) {
+      throw new Error('Failed to fetch market data');
     }
     
-    // Flatten all market data into a single array
-    const allAssets = [
-      ...marketData.stocks,
-      ...marketData.indices,
-      ...marketData.commodities,
-      ...marketData.crypto,
-      ...marketData.forex,
-      ...marketData.funds
-    ];
+    const marketData = await marketDataResponse.json();
+    const timestamp = new Date().toISOString();
+    let updatedCount = 0;
 
-    console.log(`Fetched ${allAssets.length} assets. Starting database update...`);
+    // Process each category
+    for (const [category, assets] of Object.entries(marketData)) {
+      if (!Array.isArray(assets)) continue;
 
-    // Prepare the assets for update
-    const assetsToUpsert = allAssets.map((asset, index) => ({
-      id: index + 1, // Generate sequential IDs
-      symbol: asset.symbol,
-      name: asset.name,
-      current_price: asset.price,
-      price_change_24h: asset.change,
-      price_change_percentage_24h: asset.changePercent,
-      market_cap: asset.marketCap || 0,
-      total_volume: asset.volume || 0,
-      high_24h: asset.dayHigh || 0,
-      low_24h: asset.dayLow || 0,
-      type: asset.type,
-      last_updated: new Date().toISOString()
-    }));
+      for (const asset of assets) {
+        try {
+          // Update or insert the asset in Supabase
+          const { error } = await supabase
+            .from('assets')
+            .upsert({
+              symbol: asset.symbol,
+              name: asset.name,
+              type: asset.type,
+              price: asset.price,
+              change: asset.change,
+              change_percent: asset.changePercent,
+              volume: asset.volume,
+              market_cap: asset.marketCap,
+              day_high: asset.dayHigh,
+              day_low: asset.dayLow,
+              last_updated: timestamp
+            }, {
+              onConflict: 'symbol'
+            });
 
-    console.log(`Prepared ${assetsToUpsert.length} assets for update`);
-
-    // Start a transaction
-    const { error: deleteError } = await supabaseAdmin
-      .from('assets')
-      .delete()
-      .neq('id', 0); // Delete all records
-
-    if (deleteError) {
-      console.error('Error deleting existing assets:', deleteError);
-      throw new Error(`Database delete failed: ${deleteError.message}`);
+          if (error) {
+            console.error(`Error updating ${asset.symbol}:`, error);
+          } else {
+            updatedCount++;
+          }
+        } catch (error) {
+          console.error(`Error processing ${asset.symbol}:`, error);
+        }
+      }
     }
-
-    // Insert new records
-    const { error: insertError } = await supabaseAdmin
-      .from('assets')
-      .insert(assetsToUpsert);
-
-    if (insertError) {
-      console.error('Error inserting new assets:', insertError);
-      throw new Error(`Database insert failed: ${insertError.message}`);
-    }
-
-    console.log(`Asset update completed successfully. Updated ${assetsToUpsert.length} assets.`);
 
     return NextResponse.json({
       success: true,
       message: 'Assets updated successfully',
-      count: assetsToUpsert.length,
-      timestamp: new Date().toISOString()
+      count: updatedCount,
+      timestamp
     });
+
   } catch (error) {
-    console.error('Error in asset update cron job:', error);
-    // Log the full error object for better debugging
-    console.error('Full error details:', {
-      name: error instanceof Error ? error.name : 'Unknown',
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      error: error
-    });
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error',
-        details: error instanceof Error ? error.stack : 'No details provided'
-      },
-      { status: 500 }
-    );
+    console.error('Error updating assets:', error);
+    return NextResponse.json({
+      error: 'Failed to update assets',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

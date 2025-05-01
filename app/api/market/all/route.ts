@@ -1,144 +1,120 @@
 import { NextResponse } from 'next/server';
 import yahooFinance from 'yahoo-finance2';
-import { MarketData, MarketSegmentData, getAssetType, getSegmentKey } from '@/lib/yahoo-finance';
-import { supabaseAdmin } from '@/src/lib/supabase-admin';
+import { MarketData, MarketSegmentData } from '@/lib/yahoo-finance';
 
-interface Asset {
-  id: string;
-  symbol: string;
-  name: string;
-  current_price: number;
-  price_change_24h: number;
-  price_change_percentage_24h: number;
-  total_volume: number;
-  market_cap: number;
-  high_24h: number;
-  low_24h: number;
-}
+// Define market symbols with proper Yahoo Finance formatting
+const MARKET_SYMBOLS = {
+  stocks: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'V', 'WMT',
+           'JNJ', 'MA', 'PG', 'HD', 'BAC', 'DIS', 'NFLX', 'ADBE', 'PYPL', 'INTC',
+           'CSCO', 'PFE', 'PEP', 'TMO', 'ABT'],
+  indices: ['^GSPC', '^DJI', '^IXIC', '^FTSE', '^N225', '^HSI', '^STOXX50E', '^AXJO',
+            '^BSESN', '^RUT', '^VIX', '^TNX', '^TYX', '^FCHI', '^GDAXI'],
+  commodities: ['GC=F', 'SI=F', 'CL=F', 'NG=F', 'HG=F', 'ZC=F', 'ZW=F', 'ZS=F', 'PA=F',
+                'PL=F', 'KC=F', 'CC=F', 'CT=F', 'LBS=F', 'SB=F'],
+  crypto: ['BTC-USD', 'ETH-USD', 'BNB-USD', 'SOL-USD', 'XRP-USD', 'USDC-USD', 'USDT-USD',
+           'ADA-USD', 'AVAX-USD', 'DOGE-USD', 'DOT-USD', 'LINK-USD', 'MATIC-USD', 'SHIB-USD',
+           'TRX-USD', 'UNI-USD', 'WBTC-USD', 'LTC-USD', 'ATOM-USD', 'XLM-USD'],
+  forex: ['EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'AUDUSD=X', 'USDCAD=X', 'USDCHF=X',
+          'NZDUSD=X', 'EURGBP=X', 'EURJPY=X', 'GBPJPY=X', 'EURCAD=X', 'AUDJPY=X',
+          'AUDNZD=X', 'CADJPY=X', 'EURAUD=X'],
+  funds: ['SPY', 'QQQ', 'DIA', 'IWM', 'VTI', 'VOO', 'VEA', 'VWO', 'BND', 'GLD',
+          'SLV', 'USO', 'UNG', 'ARKK', 'ARKW']
+} as const;
 
-interface CategorizedAsset extends Asset {
-  type: MarketData['type'];
-  formattedSymbol: string;
-}
+const BATCH_SIZE = 1; // Process one symbol at a time for better error tracking
 
-const BATCH_SIZE = 10; // Process symbols in batches of 10
+// Commodity name mappings
+const COMMODITY_NAMES: { [key: string]: string } = {
+  'GC=F': 'Gold',
+  'SI=F': 'Silver',
+  'CL=F': 'Crude Oil',
+  'NG=F': 'Natural Gas',
+  'HG=F': 'Copper',
+  'ZC=F': 'Corn',
+  'ZW=F': 'Wheat',
+  'ZS=F': 'Soybeans',
+  'PA=F': 'Palladium',
+  'PL=F': 'Platinum',
+  'KC=F': 'Coffee',
+  'CC=F': 'Cocoa',
+  'CT=F': 'Cotton',
+  'LBS=F': 'Lumber',
+  'SB=F': 'Sugar'
+};
 
-// Add a retry mechanism for failed assets
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
-
-// List of problematic symbols that need special handling
-const PROBLEMATIC_SYMBOLS = new Set([
-  'XLM', 'WBTC', 'USDC', 'USDJPY', 'USDCAD', 'USDCHF', 'ZW',
-  'GC=F', 'SI=F', 'ZC=F'
-]);
-
-// Whitelist of valid Yahoo Finance commodity symbols
-const VALID_COMMODITY_SYMBOLS = [
-  'GC=F', 'SI=F', 'CL=F', 'NG=F', 'HG=F', 'ZC=F', 'ZW=F', 'ZS=F', 'PA=F',
-  'PL=F', 'KC=F', 'CC=F', 'CT=F', 'LBS=F', 'SB=F'
-];
-
-// Helper function to format symbol for Yahoo Finance API
-function formatSymbolForYahoo(symbol: string, type: string): string {
-  // Remove any existing suffixes first
-  const cleanSymbol = symbol.replace(/[-=].*$/, '');
-  
-  switch (type) {
-    case 'commodity':
-      // If the symbol already has =F suffix, keep it
-      if (symbol.endsWith('=F')) {
-        return symbol;
-      }
-      return `${cleanSymbol}=F`;
-    case 'forex':
-      return `${cleanSymbol}=X`;
+// Helper function to get the correct type for the market data
+function getMarketType(category: keyof typeof MARKET_SYMBOLS): MarketData['type'] {
+  switch (category) {
+    case 'stocks':
+      return 'stock';
+    case 'indices':
+      return 'index';
+    case 'commodities':
+      return 'commodity';
     case 'crypto':
-      return `${cleanSymbol}-USD`;
-    case 'index':
-      return symbol.startsWith('^') ? symbol : `^${cleanSymbol}`;
-    case 'fund':
-      return cleanSymbol;
+      return 'crypto';
+    case 'forex':
+      return 'forex';
+    case 'funds':
+      return 'fund';
     default:
-      return cleanSymbol;
+      return 'stock';
   }
 }
 
-// Helper function to get possible symbol formats
-function getSymbolFormats(symbol: string, type: string): string[] {
-  const cleanSymbol = symbol.replace(/[-=].*$/, '');
-  
-  // Always return the properly formatted symbol based on type
-  switch (type) {
-    case 'forex':
-      return [`${cleanSymbol}=X`];
-    case 'crypto':
-      return [`${cleanSymbol}-USD`];
-    case 'commodity':
-      return [`${cleanSymbol}=F`];
-    case 'index':
-      return [symbol.startsWith('^') ? symbol : `^${cleanSymbol}`];
-    default:
-      return [cleanSymbol]; // For stocks and funds, use clean symbol
-  }
-}
+// Helper function to extract price from quote data
+function extractPrice(quote: any, category: string): number {
+  if (!quote) return 0;
 
-// Update the fetchQuoteWithRetry function
-async function fetchQuoteWithRetry(symbol: string, type: string, retries = MAX_RETRIES): Promise<any> {
-  try {
-    const formattedSymbol = getSymbolFormats(symbol, type)[0]; // Always use properly formatted symbol
-    const quote = await yahooFinance.quote(formattedSymbol);
-    
-    if (!quote || typeof quote !== 'object') {
-      throw new Error(`Invalid quote structure for ${symbol}`);
+  // Log all available price-related fields
+  const priceFields = {
+    regularMarketPrice: quote.regularMarketPrice,
+    currentPrice: quote.currentPrice,
+    regularMarketOpen: quote.regularMarketOpen,
+    ask: quote.ask,
+    bid: quote.bid,
+    postMarketPrice: quote.postMarketPrice,
+    preMarketPrice: quote.preMarketPrice,
+  };
+  
+  console.log(`Available price fields for ${quote.symbol}:`, priceFields);
+
+  // Try different price fields based on category
+  if (category === 'crypto' || category === 'commodities') {
+    // For crypto and commodities, try currentPrice first
+    if (typeof quote.currentPrice === 'number' && quote.currentPrice > 0) {
+      console.log(`Using currentPrice for ${quote.symbol}: ${quote.currentPrice}`);
+      return quote.currentPrice;
     }
-    return quote;
-  } catch (error) {
-    if (retries > 0) {
-      console.log(`Retrying ${symbol} (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})...`);
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-      return fetchQuoteWithRetry(symbol, type, retries - 1);
-    } else {
-      if (error instanceof Error) {
-        if (error.message.includes('Yahoo Schema validation')) {
-          console.warn(`Yahoo Finance validation error for ${symbol}:`, error.message);
-        } else {
-          console.error(`Failed to fetch quote for ${symbol} after ${MAX_RETRIES} retries:`, error);
-        }
-      }
-      throw error;
+    // Then try regularMarketPrice
+    if (typeof quote.regularMarketPrice === 'number' && quote.regularMarketPrice > 0) {
+      console.log(`Using regularMarketPrice for ${quote.symbol}: ${quote.regularMarketPrice}`);
+      return quote.regularMarketPrice;
+    }
+    // Finally try ask/bid
+    if (typeof quote.ask === 'number' && quote.ask > 0) {
+      console.log(`Using ask price for ${quote.symbol}: ${quote.ask}`);
+      return quote.ask;
+    }
+    if (typeof quote.bid === 'number' && quote.bid > 0) {
+      console.log(`Using bid price for ${quote.symbol}: ${quote.bid}`);
+      return quote.bid;
     }
   }
+
+  // Default to regularMarketPrice for other categories
+  if (typeof quote.regularMarketPrice === 'number' && quote.regularMarketPrice > 0) {
+    console.log(`Using regularMarketPrice for ${quote.symbol}: ${quote.regularMarketPrice}`);
+    return quote.regularMarketPrice;
+  }
+
+  console.log(`No valid price found for ${quote.symbol}, returning 0`);
+  return 0;
 }
 
 export async function GET() {
   try {
-    if (!supabaseAdmin) {
-      throw new Error('Supabase admin client not initialized');
-    }
-
-    // Fetch all assets from Supabase
-    const { data: assets, error } = await supabaseAdmin
-      .from('assets')
-      .select('id, symbol, name, current_price, price_change_percentage_24h, market_cap, total_volume, high_24h, low_24h')
-      .returns<Asset[]>();
-
-    if (error) {
-      console.error('Error fetching assets from Supabase:', error);
-      return NextResponse.json(
-        { error: 'Failed to fetch assets from database' },
-        { status: 500 }
-      );
-    }
-
-    if (!assets || assets.length === 0) {
-      return NextResponse.json(
-        { error: 'No assets found in database' },
-        { status: 404 }
-      );
-    }
-
-    // Group assets by type
+    // Initialize empty market data structure
     const marketData: MarketSegmentData = {
       stocks: [],
       indices: [],
@@ -148,148 +124,67 @@ export async function GET() {
       funds: []
     };
 
-    // Process symbols in batches
-    const failedSymbols: { symbol: string; error: string }[] = [];
-    const quotesMap = new Map();
-
-    // First, categorize all assets and ensure proper formatting
-    const categorizedAssets = assets.map(asset => {
-      const type = getAssetType(asset.symbol);
-      const formattedSymbol = getSymbolFormats(asset.symbol, type)[0]; // Always use properly formatted symbol
-      return { ...asset, type, formattedSymbol };
-    });
-
-    // Group assets by type for batch processing
-    const assetsByType = {
-      stocks: categorizedAssets.filter(a => a.type === 'stock'),
-      indices: categorizedAssets.filter(a => a.type === 'index'),
-      commodities: categorizedAssets.filter(a => a.type === 'commodity'),
-      crypto: categorizedAssets.filter(a => a.type === 'crypto'),
-      forex: categorizedAssets.filter(a => a.type === 'forex'),
-      funds: categorizedAssets.filter(a => a.type === 'fund')
-    };
-
-    // Use the original asset object for commodities
-    const dbCommodities = assets.filter(a => getAssetType(a.symbol) === 'commodity');
-    marketData.commodities = dbCommodities.map(asset => ({
-      symbol: asset.symbol,
-      name: asset.name,
-      price: asset.current_price,
-      change: asset.price_change_24h,
-      changePercent: asset.price_change_percentage_24h,
-      volume: asset.total_volume,
-      marketCap: asset.market_cap,
-      type: 'commodity',
-      dayHigh: asset.high_24h,
-      dayLow: asset.low_24h,
-    }));
-
-    // Process each type separately (skip commodities)
-    for (const [type, typeAssets] of Object.entries(assetsByType)) {
-      if (type === 'commodities' || typeAssets.length === 0) continue;
-
-      console.log(`Processing ${type} with ${typeAssets.length} symbols`);
-      const batchSize = 10;
-      for (let i = 0; i < typeAssets.length; i += batchSize) {
-        const batch = typeAssets.slice(i, i + batchSize);
-        console.log(`Processing batch ${i / batchSize + 1} for ${type}:`, batch);
+    // Process each category
+    const categories = Object.keys(MARKET_SYMBOLS) as Array<keyof typeof MARKET_SYMBOLS>;
+    
+    for (const category of categories) {
+      const type = getMarketType(category);
+      const symbols = MARKET_SYMBOLS[category];
+      
+      // Process symbols one at a time for better error tracking
+      for (let i = 0; i < symbols.length; i++) {
+        const symbol = symbols[i];
         
         try {
-          const quotes = await Promise.all(
-            batch.map(async asset => {
-              let symbolForYahoo = asset.formattedSymbol;
-              try {
-                if (asset.type === 'commodity') {
-                  // Use the DB symbol directly for Yahoo Finance
-                  symbolForYahoo = asset.symbol;
-                }
-                const quote = await fetchQuoteWithRetry(symbolForYahoo, type);
-                if (!quote || !quote.symbol) {
-                  console.warn(`Invalid quote structure for ${symbolForYahoo}:`, quote);
-                  failedSymbols.push({
-                    symbol: symbolForYahoo,
-                    error: 'Invalid quote structure'
-                  });
-                  return null;
-                }
-                return { quote, asset };
-              } catch (error) {
-                if (error instanceof Error) {
-                  if (error.message.includes('Yahoo Schema validation')) {
-                    console.warn(`Skipping ${symbolForYahoo} due to Yahoo Finance validation error`);
-                    failedSymbols.push({
-                      symbol: symbolForYahoo,
-                      error: 'Yahoo Finance validation error'
-                    });
-                  } else {
-                    console.error(`Error fetching quote for ${symbolForYahoo}:`, error);
-                    failedSymbols.push({
-                      symbol: symbolForYahoo,
-                      error: error.message
-                    });
-                  }
-                }
-                return null;
-              }
-            })
-          );
-
-          const validQuotes = quotes.filter((q): q is { quote: any; asset: CategorizedAsset } => q !== null);
+          console.log(`Fetching quote for ${category} symbol: ${symbol}`);
           
-          validQuotes.forEach(({ quote, asset }) => {
-            if (quote.regularMarketPrice) {
-              const assetData: MarketData = {
-                symbol: asset.formattedSymbol,
-                name: asset.type === 'commodity' ? asset.name : (quote.longName || quote.shortName || asset.formattedSymbol),
-                price: quote.regularMarketPrice,
-                change: quote.regularMarketChange,
-                changePercent: quote.regularMarketChangePercent,
-                volume: quote.regularMarketVolume,
-                marketCap: quote.marketCap,
-                type: asset.type,
-                dayHigh: quote.regularMarketDayHigh,
-                dayLow: quote.regularMarketDayLow,
-                fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
-                fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
-                averageVolume: quote.averageDailyVolume3Month,
-                openPrice: quote.regularMarketOpen,
-                previousClose: quote.regularMarketPreviousClose,
-              };
-              const segmentKey = getSegmentKey(asset.type);
-              marketData[segmentKey].push(assetData);
-              quotesMap.set(asset.formattedSymbol, quote);
-              console.log(`Successfully processed ${asset.formattedSymbol}`);
-            } else {
-              console.log(`Failed to process ${asset.formattedSymbol}: Missing regularMarketPrice`);
-              failedSymbols.push({
-                symbol: asset.formattedSymbol,
-                error: 'Missing regularMarketPrice'
-              });
-            }
-          });
+          // Get all available fields for the quote
+          const quote = await yahooFinance.quote(symbol);
+          console.log(`Raw quote data for ${symbol}:`, JSON.stringify(quote, null, 2));
+
+          const price = extractPrice(quote, category);
+          
+          const processedQuote = {
+            symbol: quote.symbol,
+            name: category === 'commodities' ? COMMODITY_NAMES[symbol] || quote.shortName || quote.longName || symbol : quote.shortName || quote.longName || symbol,
+            price: price,
+            change: quote.regularMarketChange || 0,
+            changePercent: quote.regularMarketChangePercent || 0,
+            volume: quote.regularMarketVolume || 0,
+            marketCap: quote.marketCap || 0,
+            dayHigh: quote.regularMarketDayHigh || 0,
+            dayLow: quote.regularMarketDayLow || 0,
+            type
+          };
+
+          console.log(`Processed quote for ${symbol}:`, processedQuote);
+          marketData[category].push(processedQuote);
+
         } catch (error) {
-          console.error(`Error processing batch for ${type}:`, error);
-          batch.forEach(asset => {
-            failedSymbols.push({
-              symbol: asset.formattedSymbol,
-              error: error instanceof Error ? error.message : 'Unknown error'
-            });
+          console.error(`Error fetching quote for ${symbol}:`, error);
+          // Add placeholder data for failed symbol
+          marketData[category].push({
+            symbol,
+            name: category === 'commodities' ? COMMODITY_NAMES[symbol] || symbol : symbol,
+            price: 0,
+            change: 0,
+            changePercent: 0,
+            volume: 0,
+            marketCap: 0,
+            dayHigh: 0,
+            dayLow: 0,
+            type,
+            error: true
           });
         }
-        
-        // Add delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
 
-    return NextResponse.json({
-      ...marketData,
-      failedSymbols: failedSymbols.length > 0 ? failedSymbols : undefined
-    });
-  } catch (error: any) {
-    console.error('Error fetching market data:', error);
+    return NextResponse.json(marketData);
+  } catch (error) {
+    console.error('Error in market data endpoint:', error);
     return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
+      { error: 'Failed to fetch market data' },
       { status: 500 }
     );
   }
