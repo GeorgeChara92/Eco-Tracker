@@ -136,15 +136,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
-    // Initialize empty market data structure
-    const marketData: MarketSegmentData = {
-      stocks: [],
-      indices: [],
-      commodities: [],
-      crypto: [],
-      forex: [],
-      funds: []
-    };
+    let updatedCount = 0;
+    const timestamp = new Date().toISOString();
 
     // Process each category
     const categories = Object.keys(MARKET_SYMBOLS) as Array<keyof typeof MARKET_SYMBOLS>;
@@ -166,61 +159,56 @@ export async function GET(request: Request) {
 
           const price = extractPrice(quote, category);
           
-          const processedQuote: MarketData = {
+          const asset = {
             symbol: quote.symbol,
             name: category === 'commodities' ? COMMODITY_NAMES[symbol] || quote.shortName || quote.longName || symbol : quote.shortName || quote.longName || symbol,
-            price: price,
+            type,
+            price,
             change: quote.regularMarketChange || 0,
-            changePercent: quote.regularMarketChangePercent || 0,
+            change_percent: quote.regularMarketChangePercent || 0,
             volume: quote.regularMarketVolume || 0,
-            marketCap: quote.marketCap || 0,
-            dayHigh: quote.regularMarketDayHigh || 0,
-            dayLow: quote.regularMarketDayLow || 0,
-            type
+            market_cap: quote.marketCap || 0,
+            day_high: quote.regularMarketDayHigh || 0,
+            day_low: quote.regularMarketDayLow || 0,
+            last_updated: timestamp
           };
 
-          console.log(`Processed quote for ${symbol}:`, processedQuote);
-          marketData[category].push(processedQuote);
+          // Update or insert the asset in Supabase
+          const { error, data } = await supabase
+            .from('assets')
+            .upsert({
+              ...asset,
+              force_update: true,
+              last_updated: timestamp
+            }, {
+              onConflict: 'symbol',
+              ignoreDuplicates: false
+            })
+            .select();
+
+          if (error) {
+            console.error(`Error updating ${symbol}:`, error);
+          } else {
+            updatedCount++;
+            console.log(`Successfully updated ${symbol}:`, {
+              symbol: asset.symbol,
+              price: asset.price,
+              change: asset.change,
+              timestamp: asset.last_updated
+            });
+          }
 
         } catch (error) {
-          console.error(`Error fetching quote for ${symbol}:`, error);
-          // Add placeholder data for failed symbol
-          marketData[category].push({
-            symbol,
-            name: category === 'commodities' ? COMMODITY_NAMES[symbol] || symbol : symbol,
-            price: 0,
-            change: 0,
-            changePercent: 0,
-            volume: 0,
-            marketCap: 0,
-            dayHigh: 0,
-            dayLow: 0,
-            type,
-            error: true
-          });
+          console.error(`Error processing ${symbol}:`, error);
         }
       }
     }
 
-    // Store the updated data in Supabase
-    const { error } = await supabase
-      .from('market_data')
-      .upsert({
-        id: 1,
-        data: marketData,
-        updated_at: new Date().toISOString()
-      });
-
-    if (error) {
-      console.error('Error storing market data:', error);
-      return NextResponse.json({ error: 'Failed to store market data' }, { status: 500 });
-    }
-
     return NextResponse.json({
       success: true,
-      message: 'Market data updated successfully',
-      count: Object.values(marketData).flat().length,
-      timestamp: new Date().toISOString()
+      message: 'Assets updated successfully',
+      count: updatedCount,
+      timestamp
     });
 
   } catch (error) {
