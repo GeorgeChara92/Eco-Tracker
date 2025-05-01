@@ -6,7 +6,7 @@ export async function getAssets(): Promise<Asset[]> {
     const { data, error } = await supabase
       .from('assets')
       .select('*')
-      .order('market_cap_rank', { ascending: true });
+      .order('market_cap', { ascending: false });
 
     if (error) throw error;
     return data || [];
@@ -34,13 +34,13 @@ export async function updateAssets(assets: Asset[]): Promise<{ success: boolean;
   }
 }
 
-export async function createAlert(userId: string, assetId: string, alertType: 'price' | 'percentage', condition: 'above' | 'below', value: number) {
+export async function createAlert(userId: string, assetSymbol: string, alertType: 'price' | 'percentage', condition: 'above' | 'below', value: number) {
   try {
     const { data, error } = await supabase
       .from('alerts')
       .insert({
         user_id: userId,
-        asset_id: assetId,
+        asset_symbol: assetSymbol,
         alert_type: alertType,
         condition: condition,
         value: value,
@@ -63,12 +63,11 @@ export async function getUserAlerts(userId: string) {
       .from('alerts')
       .select(`
         *,
-        assets (
-          id,
-          name,
+        assets!inner (
           symbol,
-          current_price,
-          price_change_percentage_24h
+          name,
+          price,
+          change_percent
         )
       `)
       .eq('user_id', userId)
