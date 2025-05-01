@@ -33,7 +33,7 @@ export function useAllMarketData() {
       }
       return response.json();
     },
-    refetchInterval: 60000, // Refetch every minute
+    refetchInterval: 15000, // Refetch every 15 seconds
   });
 
   return {
