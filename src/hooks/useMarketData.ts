@@ -49,10 +49,18 @@ export const useAllMarketData = () => {
     gcTime: GC_TIME,
     refetchOnWindowFocus: true,
     retry: RETRY_COUNT,
-    select: (data) => ({
-      ...data,
-      _timestamp: Date.now() // Force React to recognize data changes
-    })
+    select: (data) => {
+      console.log('Market data updated:', {
+        timestamp: new Date().toISOString(),
+        stocksCount: data.stocks?.length,
+        indicesCount: data.indices?.length,
+        cryptoCount: data.crypto?.length
+      });
+      return {
+        ...data,
+        _timestamp: Date.now() // Force React to recognize data changes
+      };
+    }
   });
 };
 

@@ -1,15 +1,21 @@
 import { NextResponse } from 'next/server';
-import { headers } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 import yahooFinance from 'yahoo-finance2';
+import { MarketData, MarketSegmentData } from '@/lib/yahoo-finance';
 
 // Initialize Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
 );
 
-// Market symbols configuration
+// Define market symbols with proper Yahoo Finance formatting
 const MARKET_SYMBOLS = {
   stocks: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'V', 'WMT',
            'JNJ', 'MA', 'PG', 'HD', 'BAC', 'DIS', 'NFLX', 'ADBE', 'PYPL', 'INTC',
@@ -28,127 +34,200 @@ const MARKET_SYMBOLS = {
           'SLV', 'USO', 'UNG', 'ARKK', 'ARKW']
 } as const;
 
-// Helper functions
-function getMarketType(category: keyof typeof MARKET_SYMBOLS) {
+// Commodity name mappings
+const COMMODITY_NAMES: { [key: string]: string } = {
+  'GC=F': 'Gold',
+  'SI=F': 'Silver',
+  'CL=F': 'Crude Oil',
+  'NG=F': 'Natural Gas',
+  'HG=F': 'Copper',
+  'ZC=F': 'Corn',
+  'ZW=F': 'Wheat',
+  'ZS=F': 'Soybeans',
+  'PA=F': 'Palladium',
+  'PL=F': 'Platinum',
+  'KC=F': 'Coffee',
+  'CC=F': 'Cocoa',
+  'CT=F': 'Cotton',
+  'LBS=F': 'Lumber',
+  'SB=F': 'Sugar'
+};
+
+// Helper function to get the correct type for the market data
+function getMarketType(category: keyof typeof MARKET_SYMBOLS): MarketData['type'] {
   switch (category) {
-    case 'stocks': return 'stock';
-    case 'indices': return 'index';
-    case 'commodities': return 'commodity';
-    case 'crypto': return 'crypto';
-    case 'forex': return 'forex';
-    case 'funds': return 'fund';
-    default: return 'stock';
+    case 'stocks':
+      return 'stock';
+    case 'indices':
+      return 'index';
+    case 'commodities':
+      return 'commodity';
+    case 'crypto':
+      return 'crypto';
+    case 'forex':
+      return 'forex';
+    case 'funds':
+      return 'fund';
+    default:
+      return 'stock';
   }
 }
 
-// Verify the cron secret
-function isAuthorized(req: Request) {
-  const headersList = headers();
-  const authHeader = headersList.get('authorization');
-  if (!authHeader) return false;
+// Helper function to extract price from quote data
+function extractPrice(quote: any, category: string): number {
+  if (!quote) return 0;
+
+  // Log all available price-related fields
+  const priceFields = {
+    regularMarketPrice: quote.regularMarketPrice,
+    currentPrice: quote.currentPrice,
+    regularMarketOpen: quote.regularMarketOpen,
+    ask: quote.ask,
+    bid: quote.bid,
+    postMarketPrice: quote.postMarketPrice,
+    preMarketPrice: quote.preMarketPrice,
+  };
   
-  const token = authHeader.split(' ')[1];
-  return token === process.env.CRON_SECRET;
+  console.log(`Available price fields for ${quote.symbol}:`, priceFields);
+
+  // Try different price fields based on category
+  if (category === 'crypto' || category === 'commodities') {
+    // For crypto and commodities, try currentPrice first
+    if (typeof quote.currentPrice === 'number' && quote.currentPrice > 0) {
+      console.log(`Using currentPrice for ${quote.symbol}: ${quote.currentPrice}`);
+      return quote.currentPrice;
+    }
+    // Then try regularMarketPrice
+    if (typeof quote.regularMarketPrice === 'number' && quote.regularMarketPrice > 0) {
+      console.log(`Using regularMarketPrice for ${quote.symbol}: ${quote.regularMarketPrice}`);
+      return quote.regularMarketPrice;
+    }
+    // Finally try ask/bid
+    if (typeof quote.ask === 'number' && quote.ask > 0) {
+      console.log(`Using ask price for ${quote.symbol}: ${quote.ask}`);
+      return quote.ask;
+    }
+    if (typeof quote.bid === 'number' && quote.bid > 0) {
+      console.log(`Using bid price for ${quote.symbol}: ${quote.bid}`);
+      return quote.bid;
+    }
+  }
+
+  // Default to regularMarketPrice for other categories
+  if (typeof quote.regularMarketPrice === 'number' && quote.regularMarketPrice > 0) {
+    console.log(`Using regularMarketPrice for ${quote.symbol}: ${quote.regularMarketPrice}`);
+    return quote.regularMarketPrice;
+  }
+
+  console.log(`No valid price found for ${quote.symbol}, returning 0`);
+  return 0;
 }
 
-// Helper function to get base URL
-function getBaseUrl() {
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
-  }
-  return 'http://localhost:3000';
-}
-
-export async function GET(req: Request) {
-  console.log('Starting assets update...');
-  
-  // Verify authorization
-  if (!isAuthorized(req)) {
-    console.error('Unauthorized request');
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
+export async function GET(request: Request) {
   try {
-    const baseUrl = getBaseUrl();
-    console.log('Using base URL:', baseUrl);
+    // Verify the request is from our cron job
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    const timestamp = new Date().toISOString();
-    let updatedCount = 0;
+    const token = authHeader.split(' ')[1];
+    if (token !== process.env.CRON_SECRET) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
+
+    // Initialize empty market data structure
+    const marketData: MarketSegmentData = {
+      stocks: [],
+      indices: [],
+      commodities: [],
+      crypto: [],
+      forex: [],
+      funds: []
+    };
 
     // Process each category
-    for (const [category, symbols] of Object.entries(MARKET_SYMBOLS)) {
-      const type = getMarketType(category as keyof typeof MARKET_SYMBOLS);
+    const categories = Object.keys(MARKET_SYMBOLS) as Array<keyof typeof MARKET_SYMBOLS>;
+    
+    for (const category of categories) {
+      const type = getMarketType(category);
+      const symbols = MARKET_SYMBOLS[category];
       
-      // Process symbols one at a time
-      for (const symbol of symbols) {
+      // Process symbols one at a time for better error tracking
+      for (let i = 0; i < symbols.length; i++) {
+        const symbol = symbols[i];
+        
         try {
           console.log(`Fetching quote for ${category} symbol: ${symbol}`);
           
+          // Get all available fields for the quote
           const quote = await yahooFinance.quote(symbol);
+          console.log(`Raw quote data for ${symbol}:`, JSON.stringify(quote, null, 2));
+
+          const price = extractPrice(quote, category);
           
-          if (!quote) {
-            console.error(`No quote data received for ${symbol}`);
-            continue;
-          }
-
-          // Extract price from available fields
-          let price = quote.regularMarketPrice || 0;
-          if ((category === 'crypto' || category === 'commodities') && !price) {
-            price = quote.ask || quote.bid || 0;
-          }
-
-          const asset = {
+          const processedQuote: MarketData = {
             symbol: quote.symbol,
-            name: quote.shortName || quote.longName || symbol,
-            type,
-            price,
+            name: category === 'commodities' ? COMMODITY_NAMES[symbol] || quote.shortName || quote.longName || symbol : quote.shortName || quote.longName || symbol,
+            price: price,
             change: quote.regularMarketChange || 0,
-            change_percent: quote.regularMarketChangePercent || 0,
+            changePercent: quote.regularMarketChangePercent || 0,
             volume: quote.regularMarketVolume || 0,
-            market_cap: quote.marketCap || 0,
-            day_high: quote.regularMarketDayHigh || 0,
-            day_low: quote.regularMarketDayLow || 0,
-            last_updated: timestamp
+            marketCap: quote.marketCap || 0,
+            dayHigh: quote.regularMarketDayHigh || 0,
+            dayLow: quote.regularMarketDayLow || 0,
+            type
           };
 
-          // Update or insert the asset in Supabase
-          const { error } = await supabase
-            .from('assets')
-            .upsert({
-              ...asset,
-              force_update: true
-            }, {
-              onConflict: 'symbol',
-              ignoreDuplicates: false
-            });
+          console.log(`Processed quote for ${symbol}:`, processedQuote);
+          marketData[category].push(processedQuote);
 
-          if (error) {
-            console.error(`Error updating ${symbol}:`, error);
-          } else {
-            updatedCount++;
-            console.log(`Successfully updated ${symbol}`);
-          }
         } catch (error) {
-          console.error(`Error processing ${symbol}:`, error);
+          console.error(`Error fetching quote for ${symbol}:`, error);
+          // Add placeholder data for failed symbol
+          marketData[category].push({
+            symbol,
+            name: category === 'commodities' ? COMMODITY_NAMES[symbol] || symbol : symbol,
+            price: 0,
+            change: 0,
+            changePercent: 0,
+            volume: 0,
+            marketCap: 0,
+            dayHigh: 0,
+            dayLow: 0,
+            type,
+            error: true
+          });
         }
       }
     }
 
+    // Store the updated data in Supabase
+    const { error } = await supabase
+      .from('market_data')
+      .upsert({
+        id: 1,
+        data: marketData,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.error('Error storing market data:', error);
+      return NextResponse.json({ error: 'Failed to store market data' }, { status: 500 });
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Assets updated successfully',
-      count: updatedCount,
-      timestamp
+      message: 'Market data updated successfully',
+      count: Object.values(marketData).flat().length,
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('Error updating assets:', error);
-    return NextResponse.json({
-      error: 'Failed to update assets',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    console.error('Error in market data update:', error);
+    return NextResponse.json(
+      { error: 'Failed to update market data' },
+      { status: 500 }
+    );
   }
 }

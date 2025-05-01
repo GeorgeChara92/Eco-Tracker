@@ -2,7 +2,7 @@ name: Update Assets
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Run every 5 minutes
+    - cron: '* * * * *'  # Run every minute
   workflow_dispatch:  # Allow manual triggering
   push:
     branches: [ main ]  # Run on pushes to main branch
@@ -74,9 +74,7 @@ jobs:
         NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        # Add these to ensure they're available to the API endpoint
         NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        # Add these to ensure they're available in the Node.js environment
         NODE_ENV: production
         NEXT_PUBLIC_VERCEL_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
       run: |
@@ -84,18 +82,22 @@ jobs:
         echo "Current branch: $(git branch --show-current)"
         echo "GitHub event: ${{ github.event_name }}"
         echo "API URL: $NEXT_PUBLIC_API_URL"
-        echo "CRON_SECRET length: ${#CRON_SECRET}"
-        echo "NEXT_PUBLIC_SUPABASE_URL length: ${#NEXT_PUBLIC_SUPABASE_URL}"
-        echo "SUPABASE_SERVICE_ROLE_KEY length: ${#SUPABASE_SERVICE_ROLE_KEY}"
-        # Kill any existing process
-        pkill -f "node scripts/update-assets.js" || true
+        
+        # Check if the process is already running
+        if ps aux | grep "node scripts/update-assets.js" | grep -v grep; then
+          echo "Asset update service is already running"
+          exit 0
+        fi
+        
         # Run the script in the background
         nohup node scripts/update-assets.js > update-assets.log 2>&1 &
+        
         # Wait a bit to ensure it started
         sleep 10
+        
         # Check if the process is running
         if ps aux | grep "node scripts/update-assets.js" | grep -v grep; then
-          echo "Asset update service is running"
+          echo "Asset update service started successfully"
           # Save the PID to a file for future reference
           echo $! > update-assets.pid
           # Show the last few lines of the log
