@@ -45,6 +45,31 @@ async function testConnection() {
   }
 }
 
+async function verifyUpdate() {
+  try {
+    log('Verifying last update...');
+    const response = await fetch(`${API_URL}/api/market/all`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'EcoTracker-Asset-Update/1.0'
+      },
+      timeout: 10000
+    });
+    
+    const data = await response.json();
+    const lastUpdate = new Date(data.timestamp || 0);
+    const now = new Date();
+    const minutesSinceUpdate = (now - lastUpdate) / (1000 * 60);
+    
+    log(`Last update was ${minutesSinceUpdate.toFixed(2)} minutes ago`);
+    return minutesSinceUpdate < 5; // Consider update successful if less than 5 minutes old
+  } catch (error) {
+    error('Failed to verify update:', error);
+    return false;
+  }
+}
+
 async function updateAssets(retryCount = 0) {
   log(`Starting assets update... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
   
@@ -109,6 +134,12 @@ async function updateAssets(retryCount = 0) {
         count: ${data.count}
         timestamp: ${data.timestamp}
       `);
+      
+      // Verify the update was successful
+      const isVerified = await verifyUpdate();
+      if (!isVerified) {
+        throw new Error('Update verification failed');
+      }
     }
 
     // Schedule next update

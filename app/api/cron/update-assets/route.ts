@@ -128,14 +128,17 @@ export async function GET(request: Request) {
     // Verify the request is from our cron job
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('Unauthorized request: No auth header');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const token = authHeader.split(' ')[1];
     if (token !== process.env.CRON_SECRET) {
+      console.error('Unauthorized request: Invalid token');
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    console.log('Starting market data update process...');
     let updatedCount = 0;
     const timestamp = new Date().toISOString();
 
@@ -143,20 +146,16 @@ export async function GET(request: Request) {
     const categories = Object.keys(MARKET_SYMBOLS) as Array<keyof typeof MARKET_SYMBOLS>;
     
     for (const category of categories) {
+      console.log(`Processing category: ${category}`);
       const type = getMarketType(category);
       const symbols = MARKET_SYMBOLS[category];
       
-      // Process symbols one at a time for better error tracking
       for (let i = 0; i < symbols.length; i++) {
         const symbol = symbols[i];
+        console.log(`Processing symbol ${i + 1}/${symbols.length}: ${symbol}`);
         
         try {
-          console.log(`Fetching quote for ${category} symbol: ${symbol}`);
-          
-          // Get all available fields for the quote
           const quote = await yahooFinance.quote(symbol);
-          console.log(`Raw quote data for ${symbol}:`, JSON.stringify(quote, null, 2));
-
           const price = extractPrice(quote, category);
           
           const asset = {
@@ -173,6 +172,12 @@ export async function GET(request: Request) {
             last_updated: timestamp
           };
 
+          console.log(`Updating Supabase for ${symbol}:`, {
+            price: asset.price,
+            change: asset.change,
+            volume: asset.volume
+          });
+
           // Update or insert the asset in Supabase
           const { error, data } = await supabase
             .from('assets')
@@ -187,10 +192,10 @@ export async function GET(request: Request) {
             .select();
 
           if (error) {
-            console.error(`Error updating ${symbol}:`, error);
+            console.error(`Error updating ${symbol} in Supabase:`, error);
           } else {
             updatedCount++;
-            console.log(`Successfully updated ${symbol}:`, {
+            console.log(`Successfully updated ${symbol} in Supabase:`, {
               symbol: asset.symbol,
               price: asset.price,
               change: asset.change,
@@ -204,6 +209,7 @@ export async function GET(request: Request) {
       }
     }
 
+    console.log(`Update process completed. Updated ${updatedCount} assets.`);
     return NextResponse.json({
       success: true,
       message: 'Assets updated successfully',
