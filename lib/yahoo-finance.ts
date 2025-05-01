@@ -274,27 +274,42 @@ export const getQuote = async (symbol: string, type: MarketData['type']): Promis
   }
 };
 
-// Get multiple quotes
+// Get quote data for a symbol
 async function getMultipleQuotes(symbols: string[], type: MarketData['type']): Promise<MarketData[]> {
   try {
-    const response = await axios.get(`/api/yahoo/batch?symbols=${encodeURIComponent(symbols.join(','))}&type=${type}`);
-    const data = response.data;
-    
-    // Override names for commodities using our mapping
-    if (type === 'commodity') {
-      data.forEach((item: MarketData) => {
-        if (COMMODITY_NAMES[item.symbol]) {
-          item.name = COMMODITY_NAMES[item.symbol];
-        }
-      });
+    const response = await axios.get(`https://query1.finance.yahoo.com/v7/finance/quote`, {
+      params: {
+        symbols: symbols.join(','),
+        fields: 'symbol,shortName,longName,regularMarketPrice,regularMarketChange,regularMarketChangePercent,regularMarketVolume,marketCap,regularMarketDayHigh,regularMarketDayLow,fiftyTwoWeekHigh,fiftyTwoWeekLow,averageDailyVolume3Month,regularMarketOpen,regularMarketPreviousClose'
+      }
+    });
+
+    if (!response.data || !response.data.quoteResponse || !response.data.quoteResponse.result) {
+      throw new Error('Invalid response from Yahoo Finance API');
     }
-    
-    return data;
+
+    return response.data.quoteResponse.result.map((quote: any) => ({
+      symbol: quote.symbol,
+      name: quote.longName || quote.shortName || quote.symbol,
+      price: quote.regularMarketPrice,
+      change: quote.regularMarketChange,
+      changePercent: quote.regularMarketChangePercent,
+      volume: quote.regularMarketVolume,
+      marketCap: quote.marketCap,
+      type,
+      dayHigh: quote.regularMarketDayHigh,
+      dayLow: quote.regularMarketDayLow,
+      fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
+      fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
+      averageVolume: quote.averageDailyVolume3Month,
+      openPrice: quote.regularMarketOpen,
+      previousClose: quote.regularMarketPreviousClose
+    }));
   } catch (error) {
-    console.error(`Error fetching multiple quotes:`, error);
+    console.error('Error fetching quotes:', error);
     return symbols.map(symbol => ({
       symbol,
-      name: type === 'commodity' ? COMMODITY_NAMES[symbol] || symbol : symbol,
+      name: symbol,
       price: 0,
       change: 0,
       changePercent: 0,

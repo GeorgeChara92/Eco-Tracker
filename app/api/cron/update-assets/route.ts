@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../src/lib/supabase-admin';
-import { getAllMarketData, MarketDataResponse } from '@/lib/yahoo-finance';
+import { getAllMarketData, MarketDataResponse } from '../../../../lib/yahoo-finance';
 import { headers } from 'next/headers';
 
 // This is the secret key that will be used to verify the request is coming from Vercel Cron
