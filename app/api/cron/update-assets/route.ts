@@ -183,7 +183,6 @@ export async function GET(request: Request) {
             .from('assets')
             .upsert({
               ...asset,
-              force_update: true,
               last_updated: timestamp
             }, {
               onConflict: 'symbol',
