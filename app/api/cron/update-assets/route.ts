@@ -84,7 +84,7 @@ export async function GET(request: Request) {
       total_volume: asset.volume || 0,
       high_24h: asset.dayHigh || 0,
       low_24h: asset.dayLow || 0,
-      asset_type: asset.type,
+      type: asset.type,
       last_updated: new Date().toISOString()
     }));
 
