@@ -36,6 +36,7 @@ async function updateAssets(retryCount = 0) {
       throw new Error('CRON_SECRET environment variable is not set');
     }
 
+    console.log(`[${new Date().toISOString()}] Making API request to ${API_URL}/api/cron/update-assets`);
     const response = await fetch(`${API_URL}/api/cron/update-assets`, {
       headers: {
         'Authorization': `Bearer ${CRON_SECRET}`
@@ -45,6 +46,11 @@ async function updateAssets(retryCount = 0) {
     const data = await response.json();
     
     if (!response.ok) {
+      console.error(`[${new Date().toISOString()}] API Error Response:`, {
+        status: response.status,
+        statusText: response.statusText,
+        data: data
+      });
       throw new Error(`API Error: ${data.error || 'Unknown error'} - ${data.details || 'No details provided'}`);
     }
     
@@ -60,6 +66,10 @@ async function updateAssets(retryCount = 0) {
     
   } catch (error) {
     console.error(`[${new Date().toISOString()}] Update failed:`, error.message);
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response data:', error.response.data);
+    }
     
     if (retryCount < MAX_RETRIES - 1) {
       console.log(`[${new Date().toISOString()}] Retrying in ${RETRY_DELAY/1000} seconds...`);

@@ -21,6 +21,8 @@ export async function GET(request: Request) {
     // Log the presence of CRON_SECRET (but not its value)
     console.log('CRON_SECRET present:', !!CRON_SECRET);
     console.log('Auth header present:', !!authHeader);
+    console.log('Supabase URL present:', !!process.env.NEXT_PUBLIC_SUPABASE_URL);
+    console.log('Supabase service key present:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
 
     // Verify the secret key
     if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
@@ -43,15 +45,21 @@ export async function GET(request: Request) {
     }
 
     console.log('Fetching market data...');
-    // Fetch all market data with a timeout
-    const marketData = await Promise.race([
-      getAllMarketData(),
-      new Promise<MarketDataResponse>((_, reject) => 
-        setTimeout(() => reject(new Error('Market data fetch timeout')), 30000)
-      )
-    ]) as MarketDataResponse;
-    
-    console.log('Market data fetched successfully, processing assets...');
+    let marketData: MarketDataResponse;
+    try {
+      marketData = await getAllMarketData();
+      console.log('Market data fetched successfully:', {
+        stocks: marketData.stocks.length,
+        indices: marketData.indices.length,
+        commodities: marketData.commodities.length,
+        crypto: marketData.crypto.length,
+        forex: marketData.forex.length,
+        funds: marketData.funds.length
+      });
+    } catch (error) {
+      console.error('Error fetching market data:', error);
+      throw new Error(`Failed to fetch market data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
     
     // Flatten all market data into a single array
     const allAssets = [
@@ -92,7 +100,7 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error('Supabase upsert error:', error);
-      throw error;
+      throw new Error(`Database update failed: ${error.message}`);
     }
 
     console.log('Asset update completed successfully');
@@ -109,12 +117,14 @@ export async function GET(request: Request) {
     console.error('Full error details:', {
       name: error instanceof Error ? error.name : 'Unknown',
       message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined,
+      error: error
     });
     return NextResponse.json(
       { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        details: error instanceof Error ? error.stack : 'No details provided'
       },
       { status: 500 }
     );
