@@ -93,10 +93,7 @@ export async function GET(request: Request) {
     // Perform the upsert operation
     const { data, error } = await supabaseAdmin
       .from('assets')
-      .upsert(assetsToUpsert, {
-        onConflict: 'symbol',
-        ignoreDuplicates: false
-      });
+      .upsert(assetsToUpsert);
 
     if (error) {
       console.error('Supabase upsert error:', error);
