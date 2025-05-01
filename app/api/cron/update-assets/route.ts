@@ -74,7 +74,8 @@ export async function GET(request: Request) {
     console.log(`Fetched ${allAssets.length} assets. Starting database update...`);
 
     // Prepare the assets for update
-    const assetsToUpsert = allAssets.map(asset => ({
+    const assetsToUpsert = allAssets.map((asset, index) => ({
+      id: index + 1, // Generate sequential IDs
       symbol: asset.symbol,
       name: asset.name,
       current_price: asset.price,
@@ -88,24 +89,21 @@ export async function GET(request: Request) {
       last_updated: new Date().toISOString()
     }));
 
-    console.log('Prepared assets for update, performing database operation...');
+    console.log(`Prepared ${assetsToUpsert.length} assets for update`);
 
-    // Get all symbols we're about to insert
-    const symbols = assetsToUpsert.map(asset => asset.symbol);
-    
-    // First delete existing records for these symbols
+    // Start a transaction
     const { error: deleteError } = await supabaseAdmin
       .from('assets')
       .delete()
-      .in('symbol', symbols);
+      .neq('id', 0); // Delete all records
 
     if (deleteError) {
       console.error('Error deleting existing assets:', deleteError);
       throw new Error(`Database delete failed: ${deleteError.message}`);
     }
 
-    // Then insert the new records
-    const { data, error: insertError } = await supabaseAdmin
+    // Insert new records
+    const { error: insertError } = await supabaseAdmin
       .from('assets')
       .insert(assetsToUpsert);
 
@@ -114,7 +112,7 @@ export async function GET(request: Request) {
       throw new Error(`Database insert failed: ${insertError.message}`);
     }
 
-    console.log('Asset update completed successfully');
+    console.log(`Asset update completed successfully. Updated ${assetsToUpsert.length} assets.`);
 
     return NextResponse.json({
       success: true,
