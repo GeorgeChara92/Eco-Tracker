@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
 import { MarketData } from '@/lib/yahoo-finance';
-import { useAllMarketData } from '@/hooks/useMarketData';
+import { useAllMarketData } from '@/src/hooks/useMarketData';
 import { useSession } from 'next-auth/react';
 import { FaLock, FaUserPlus, FaSignInAlt } from 'react-icons/fa';
 import Link from 'next/link';
@@ -100,7 +100,7 @@ function DashboardContent() {
 
         {/* Market Summary */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          {marketData?.stocks?.slice(0, 3).map((stock) => (
+          {marketData?.stocks?.slice(0, 3).map((stock: MarketData) => (
             <motion.div
               key={stock.symbol}
               initial={{ opacity: 0, y: 20 }}
@@ -121,7 +121,7 @@ function DashboardContent() {
           <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Portfolio Preview</h2>
           <div className="space-y-4">
             {mockPortfolio.map((item) => {
-              const asset = marketData?.stocks?.find((s) => s.symbol === item.symbol);
+              const asset = marketData?.stocks?.find((s: MarketData) => s.symbol === item.symbol);
               const currentPrice = asset?.price || 0;
               const totalValue = item.shares !== undefined ? item.shares * currentPrice : (item.amount || 0) * currentPrice;
               const profitLoss = totalValue - (item.shares !== undefined ? item.shares * item.avgPrice : (item.amount || 0) * item.avgPrice);
