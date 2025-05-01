@@ -18,6 +18,33 @@ function error(message, error) {
   console.error(`[${new Date().toISOString()}] ${message}`, error);
 }
 
+// Test API connection
+async function testConnection() {
+  try {
+    log('Testing API connection...');
+    const response = await fetch(`${API_URL}/api/test`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'EcoTracker-Asset-Update/1.0'
+      },
+      timeout: 10000 // 10 second timeout
+    });
+    
+    const data = await response.json();
+    log('API Test Response:', data);
+    
+    if (!response.ok) {
+      throw new Error(`API test failed: ${response.status} ${response.statusText}`);
+    }
+    
+    return true;
+  } catch (error) {
+    error('API Connection Test Failed:', error);
+    return false;
+  }
+}
+
 async function updateAssets(retryCount = 0) {
   log(`Starting assets update... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
   
@@ -28,6 +55,12 @@ async function updateAssets(retryCount = 0) {
 
     if (!API_URL) {
       throw new Error('API_URL environment variable is not set');
+    }
+
+    // Test connection first
+    const isConnected = await testConnection();
+    if (!isConnected) {
+      throw new Error('Failed to connect to API');
     }
 
     const endpoint = `${API_URL}/api/cron/update-assets`;
