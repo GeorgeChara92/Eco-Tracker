@@ -76,6 +76,7 @@ export async function GET(request: Request) {
     // Prepare the assets for upsert
     const assetsToUpsert = allAssets.map(asset => ({
       symbol: asset.symbol,
+      normalized_symbol: asset.symbol.toUpperCase(),
       name: asset.name,
       current_price: asset.price,
       price_change_24h: asset.change,
@@ -93,7 +94,9 @@ export async function GET(request: Request) {
     // Perform the upsert operation
     const { data, error } = await supabaseAdmin
       .from('assets')
-      .upsert(assetsToUpsert);
+      .upsert(assetsToUpsert, {
+        onConflict: 'normalized_symbol'
+      });
 
     if (error) {
       console.error('Supabase upsert error:', error);
