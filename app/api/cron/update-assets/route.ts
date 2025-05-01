@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import yahooFinance from 'yahoo-finance2';
-import { MarketData, MarketSegmentData } from '@/lib/yahoo-finance';
+import { MarketData } from '@/lib/yahoo-finance';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -73,56 +73,6 @@ function getMarketType(category: keyof typeof MARKET_SYMBOLS): MarketData['type'
   }
 }
 
-// Helper function to extract price from quote data
-function extractPrice(quote: any, category: string): number {
-  if (!quote) return 0;
-
-  // Log all available price-related fields
-  const priceFields = {
-    regularMarketPrice: quote.regularMarketPrice,
-    currentPrice: quote.currentPrice,
-    regularMarketOpen: quote.regularMarketOpen,
-    ask: quote.ask,
-    bid: quote.bid,
-    postMarketPrice: quote.postMarketPrice,
-    preMarketPrice: quote.preMarketPrice,
-  };
-  
-  console.log(`Available price fields for ${quote.symbol}:`, priceFields);
-
-  // Try different price fields based on category
-  if (category === 'crypto' || category === 'commodities') {
-    // For crypto and commodities, try currentPrice first
-    if (typeof quote.currentPrice === 'number' && quote.currentPrice > 0) {
-      console.log(`Using currentPrice for ${quote.symbol}: ${quote.currentPrice}`);
-      return quote.currentPrice;
-    }
-    // Then try regularMarketPrice
-    if (typeof quote.regularMarketPrice === 'number' && quote.regularMarketPrice > 0) {
-      console.log(`Using regularMarketPrice for ${quote.symbol}: ${quote.regularMarketPrice}`);
-      return quote.regularMarketPrice;
-    }
-    // Finally try ask/bid
-    if (typeof quote.ask === 'number' && quote.ask > 0) {
-      console.log(`Using ask price for ${quote.symbol}: ${quote.ask}`);
-      return quote.ask;
-    }
-    if (typeof quote.bid === 'number' && quote.bid > 0) {
-      console.log(`Using bid price for ${quote.symbol}: ${quote.bid}`);
-      return quote.bid;
-    }
-  }
-
-  // Default to regularMarketPrice for other categories
-  if (typeof quote.regularMarketPrice === 'number' && quote.regularMarketPrice > 0) {
-    console.log(`Using regularMarketPrice for ${quote.symbol}: ${quote.regularMarketPrice}`);
-    return quote.regularMarketPrice;
-  }
-
-  console.log(`No valid price found for ${quote.symbol}, returning 0`);
-  return 0;
-}
-
 export async function GET(request: Request) {
   try {
     // Verify the request is from our cron job
@@ -156,20 +106,20 @@ export async function GET(request: Request) {
         
         try {
           const quote = await yahooFinance.quote(symbol);
-          const price = extractPrice(quote, category);
           
           const asset = {
             symbol: quote.symbol,
             name: category === 'commodities' ? COMMODITY_NAMES[symbol] || quote.shortName || quote.longName || symbol : quote.shortName || quote.longName || symbol,
             type,
-            price,
+            price: quote.regularMarketPrice || 0,
             change: quote.regularMarketChange || 0,
             change_percent: quote.regularMarketChangePercent || 0,
             volume: quote.regularMarketVolume || 0,
             market_cap: quote.marketCap || 0,
             day_high: quote.regularMarketDayHigh || 0,
             day_low: quote.regularMarketDayLow || 0,
-            last_updated: timestamp
+            last_updated: timestamp,
+            normalized_symbol: symbol.replace(/[-=].*$/, '')
           };
 
           console.log(`Updating Supabase for ${symbol}:`, {
@@ -179,27 +129,16 @@ export async function GET(request: Request) {
           });
 
           // Update or insert the asset in Supabase
-          const { error, data } = await supabase
+          const { error } = await supabase
             .from('assets')
-            .upsert({
-              ...asset,
-              last_updated: timestamp
-            }, {
-              onConflict: 'symbol',
-              ignoreDuplicates: false
-            })
-            .select();
+            .upsert(asset)
+            .eq('symbol', symbol);
 
           if (error) {
             console.error(`Error updating ${symbol} in Supabase:`, error);
           } else {
             updatedCount++;
-            console.log(`Successfully updated ${symbol} in Supabase:`, {
-              symbol: asset.symbol,
-              price: asset.price,
-              change: asset.change,
-              timestamp: asset.last_updated
-            });
+            console.log(`Successfully updated ${symbol} in Supabase`);
           }
 
         } catch (error) {
