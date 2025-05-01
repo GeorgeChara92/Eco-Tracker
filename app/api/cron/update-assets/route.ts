@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase-admin';
+import { supabaseAdmin } from '../../../../src/lib/supabase-admin';
 import { getAllMarketData, MarketDataResponse } from '@/lib/yahoo-finance';
 import { headers } from 'next/headers';
 
