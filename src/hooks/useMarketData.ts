@@ -77,6 +77,11 @@ export function useAllMarketData() {
 
     const setupSubscription = async () => {
       try {
+        console.log('Setting up Supabase real-time subscription for all market data', {
+          url: process.env.NEXT_PUBLIC_SUPABASE_URL ? process.env.NEXT_PUBLIC_SUPABASE_URL.substring(0, 10) + '...' : 'not set',
+          env: process.env.NODE_ENV
+        });
+        
         // First, verify we can connect to Supabase
         const { data, error: supabaseError } = await supabase
           .from('assets')
@@ -89,7 +94,7 @@ export function useAllMarketData() {
           return;
         }
 
-        console.log('Supabase connection test successful');
+        console.log('Supabase connection test successful, sample data:', data);
         
         // Create and configure the channel
         channel = supabase.channel('public:assets', {
@@ -114,8 +119,21 @@ export function useAllMarketData() {
               table: 'assets' 
             }, 
             (payload: any) => {
-              console.log('Received real-time update:', payload);
+              console.log('Received real-time update for assets:', {
+                eventType: payload.eventType,
+                table: payload.table,
+                schema: payload.schema,
+                timestamp: new Date().toISOString(),
+                new: payload.new ? {
+                  symbol: payload.new.symbol,
+                  price: payload.new.price,
+                  change: payload.new.change
+                } : 'no new data'
+              });
+              
+              // Manually force refetch in addition to invalidation
               queryClient.invalidateQueries({ queryKey: ['marketData'] });
+              queryClient.refetchQueries({ queryKey: ['marketData'] });
             }
           );
 

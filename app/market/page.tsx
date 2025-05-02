@@ -14,9 +14,11 @@ import { FaSpinner } from 'react-icons/fa';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchInterval: 15000, // Refresh every 15 seconds by default
+      refetchInterval: 10000, // Refresh every 10 seconds by default
       refetchIntervalInBackground: true,
-      staleTime: 5000, // Consider data stale after 5 seconds
+      staleTime: 0, // Consider data stale immediately so it can be refetched
+      retry: 3,
+      retryDelay: 1000,
     },
   },
 });
