@@ -12,14 +12,7 @@ export async function GET() {
 
     if (error) {
       console.error('Error fetching assets from Supabase:', error);
-      return NextResponse.json({ error: 'Failed to fetch assets' }, { 
-        status: 500,
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
-      });
+      return NextResponse.json({ error: 'Failed to fetch assets' }, { status: 500 });
     }
 
     // Transform the data into the expected format
@@ -71,25 +64,12 @@ export async function GET() {
       }
     });
 
-    return NextResponse.json(marketData, {
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    });
+    return NextResponse.json(marketData);
   } catch (error) {
     console.error('Error in market/supabase route:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { 
-        status: 500,
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
-      }
+      { status: 500 }
     );
   }
 } 

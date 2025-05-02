@@ -14,11 +14,9 @@ import { FaSpinner } from 'react-icons/fa';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchInterval: 10000, // Refresh every 10 seconds by default
+      refetchInterval: 15000, // Refresh every 15 seconds by default
       refetchIntervalInBackground: true,
-      staleTime: 0, // Consider data stale immediately so it can be refetched
-      retry: 3,
-      retryDelay: 1000,
+      staleTime: 5000, // Consider data stale after 5 seconds
     },
   },
 });
@@ -33,8 +31,7 @@ export default function MarketPage() {
 
 function MarketPageContent() {
   const [selectedAsset, setSelectedAsset] = useState<MarketData | null>(null);
-  const { data: marketData, isLoading, error, dataUpdatedAt, refetch } = useAllMarketData();
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const { data: marketData, isLoading, error, dataUpdatedAt } = useAllMarketData();
 
   const handleAssetSelect = (asset: MarketData) => {
     setSelectedAsset(asset);
@@ -42,13 +39,6 @@ function MarketPageContent() {
 
   const handleCloseDetails = () => {
     setSelectedAsset(null);
-  };
-
-  const handleManualRefresh = async () => {
-    setIsRefreshing(true);
-    await refetch();
-    // Add small delay to show the refreshing state
-    setTimeout(() => setIsRefreshing(false), 500);
   };
 
   if (isLoading) {
@@ -87,17 +77,7 @@ function MarketPageContent() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Market Overview</h1>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleManualRefresh}
-              disabled={isRefreshing}
-              className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900 hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
-              aria-label="Refresh market data"
-            >
-              <FaSpinner className={`w-5 h-5 text-blue-600 dark:text-blue-400 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </button>
-            <RefreshNotification lastUpdated={new Date(dataUpdatedAt || Date.now())} />
-          </div>
+          <RefreshNotification lastUpdated={new Date(dataUpdatedAt || Date.now())} />
         </div>
 
         <div className="space-y-12">

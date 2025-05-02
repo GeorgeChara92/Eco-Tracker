@@ -15,12 +15,6 @@ export interface MarketData {
   type: 'stock' | 'crypto' | 'forex' | 'fund' | 'index' | 'commodity';
 }
 
-const noCacheHeaders = {
-  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-  'Pragma': 'no-cache',
-  'Expires': '0'
-};
-
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const symbol = searchParams.get('symbol');
@@ -30,7 +24,7 @@ export async function GET(request: NextRequest) {
     if (!symbol || !type) {
       return NextResponse.json(
         { error: 'Symbol and type parameters are required' },
-        { status: 400, headers: noCacheHeaders }
+        { status: 400 }
       );
     }
 
@@ -49,7 +43,7 @@ export async function GET(request: NextRequest) {
         dayLow: 0,
         type: type as MarketData['type'],
         error: true
-      }, { headers: noCacheHeaders });
+      });
     }
 
     const formattedSymbol = formatSymbol(symbol, type);
@@ -78,7 +72,7 @@ export async function GET(request: NextRequest) {
         dayLow: 0,
         type: type as MarketData['type'],
         error: true
-      }, { headers: noCacheHeaders });
+      });
     }
 
     if (!asset) {
@@ -96,7 +90,7 @@ export async function GET(request: NextRequest) {
         dayLow: 0,
         type: type as MarketData['type'],
         error: true
-      }, { headers: noCacheHeaders });
+      });
     }
 
     const marketData: MarketData = {
@@ -115,7 +109,7 @@ export async function GET(request: NextRequest) {
     // Debug: Log the constructed marketData object
     console.log('Constructed marketData:', marketData);
 
-    return NextResponse.json(marketData, { headers: noCacheHeaders });
+    return NextResponse.json(marketData);
   } catch (error) {
     console.error('Error fetching market data:', error);
     // Return a fallback response instead of error
@@ -131,7 +125,7 @@ export async function GET(request: NextRequest) {
       dayLow: 0,
       type: (type as MarketData['type']) || 'stock',
       error: true
-    }, { headers: noCacheHeaders });
+    });
   }
 }
 
