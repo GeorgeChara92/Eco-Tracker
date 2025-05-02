@@ -46,12 +46,11 @@ export default function SignUpPage() {
         throw new Error(data.error || 'Failed to create account');
       }
 
-      setShowSuccess(true);
-      
-      // Redirect to sign in after successful registration
-      setTimeout(() => {
+      if (data.redirectTo) {
+        router.push(data.redirectTo);
+      } else {
         router.push('/auth/signin');
-      }, 1500);
+      }
     } catch (err) {
       console.error('Signup error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');

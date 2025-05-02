@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { FaTimes } from 'react-icons/fa';
 import { useSession } from 'next-auth/react';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { Alert } from '@/src/hooks/useAlerts';
 
 interface AlertModalProps {
   isOpen: boolean;
@@ -22,12 +24,108 @@ export default function AlertModal({
   onAlertDeactivated
 }: AlertModalProps) {
   const { data: session } = useSession();
+  const queryClient = useQueryClient();
   const [alertType, setAlertType] = useState<'price' | 'percentage'>('price');
   const [condition, setCondition] = useState<'above' | 'below'>('above');
   const [value, setValue] = useState<number>(currentPrice * 1.1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [existingAlert, setExistingAlert] = useState<any>(null);
+  const [existingAlert, setExistingAlert] = useState<Alert | null>(null);
+
+  // Delete alert mutation
+  const deleteAlertMutation = useMutation({
+    mutationFn: async (alertId: string) => {
+      const response = await fetch(`/api/alerts?id=${alertId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to deactivate alert');
+      }
+      return alertId;
+    },
+    onMutate: async (alertId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['alerts', session?.user?.id] });
+
+      // Snapshot the previous value
+      const previousAlerts = queryClient.getQueryData<Alert[]>(['alerts', session?.user?.id]);
+
+      // Optimistically update to the new value
+      queryClient.setQueryData<Alert[]>(['alerts', session?.user?.id], 
+        (old) => old?.filter(alert => alert.id !== alertId) || []
+      );
+
+      return { previousAlerts };
+    },
+    onError: (err, alertId, context) => {
+      // Revert to the previous value on error
+      if (context?.previousAlerts) {
+        queryClient.setQueryData(['alerts', session?.user?.id], context.previousAlerts);
+      }
+    },
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: ['alerts', session?.user?.id] });
+    },
+  });
+
+  // Create alert mutation
+  const createAlertMutation = useMutation({
+    mutationFn: async (newAlert: Omit<Alert, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
+      const response = await fetch('/api/alerts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          asset_symbol: newAlert.asset_symbol,
+          alert_type: newAlert.alert_type,
+          condition: newAlert.condition,
+          value: newAlert.value,
+        }),
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create alert');
+      }
+      return response.json();
+    },
+    onMutate: async (newAlert) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['alerts', session?.user?.id] });
+
+      // Snapshot the previous value
+      const previousAlerts = queryClient.getQueryData<Alert[]>(['alerts', session?.user?.id]);
+
+      // Optimistically update to the new value
+      const optimisticAlert = {
+        ...newAlert,
+        id: 'temp-' + Date.now(),
+        user_id: session?.user?.id || '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        is_active: true,
+      };
+
+      queryClient.setQueryData<Alert[]>(['alerts', session?.user?.id], 
+        (old) => [...(old || []), optimisticAlert]
+      );
+
+      return { previousAlerts };
+    },
+    onError: (err, newAlert, context) => {
+      // Revert to the previous value on error
+      if (context?.previousAlerts) {
+        queryClient.setQueryData(['alerts', session?.user?.id], context.previousAlerts);
+      }
+    },
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: ['alerts', session?.user?.id] });
+    },
+  });
 
   useEffect(() => {
     if (isOpen && session) {
@@ -46,7 +144,7 @@ export default function AlertModal({
       }
 
       const alerts = await response.json();
-      const alert = alerts.find((a: any) => 
+      const alert = alerts.find((a: Alert) => 
         a.asset_symbol === assetId && a.is_active
       );
       
@@ -78,41 +176,20 @@ export default function AlertModal({
 
     try {
       if (existingAlert) {
-        // Deactivate the existing alert
-        const response = await fetch(`/api/alerts?id=${existingAlert.id}`, {
-          method: 'DELETE',
-          credentials: 'include',
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to deactivate alert');
-        }
-
+        // Delete alert with optimistic update
+        await deleteAlertMutation.mutateAsync(existingAlert.id);
         onAlertDeactivated?.();
         onClose();
       } else {
-        // Create new alert
-        const response = await fetch('/api/alerts', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            asset_symbol: assetId,
-            alert_type: alertType,
-            condition,
-            value: alertType === 'percentage' ? value / 100 : value,
-          }),
-          credentials: 'include',
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to create alert');
-        }
-
-        const data = await response.json();
-        console.log('Alert created successfully:', data);
+        // Create alert with optimistic update
+        const newAlert = {
+          asset_symbol: assetId,
+          alert_type: alertType,
+          condition,
+          value: alertType === 'percentage' ? value / 100 : value,
+          is_active: true
+        };
+        await createAlertMutation.mutateAsync(newAlert);
         onAlertCreated();
         onClose();
       }
