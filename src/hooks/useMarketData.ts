@@ -21,8 +21,11 @@ async function fetchMarketData() {
       credentials: 'include',
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      }
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      },
+      cache: 'no-store',
+      next: { revalidate: 0 }
     });
     
     if (!response.ok) {
@@ -68,6 +71,12 @@ export function useAllMarketData() {
   const queryClient = useQueryClient();
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  const [manualRefreshTrigger, setManualRefreshTrigger] = useState(0);
+
+  const refetchMarketData = () => {
+    console.log('Manually refetching market data after receiving update');
+    setManualRefreshTrigger(prev => prev + 1);
+  };
 
   // Set up real-time subscription
   useEffect(() => {
@@ -131,8 +140,13 @@ export function useAllMarketData() {
                 } : 'no new data'
               });
               
-              // Manually force refetch in addition to invalidation
+              // First invalidate the cache
               queryClient.invalidateQueries({ queryKey: ['marketData'] });
+              
+              // Then force a refresh
+              refetchMarketData();
+              
+              // Also explicitly refetch
               queryClient.refetchQueries({ queryKey: ['marketData'] });
             }
           );
@@ -198,10 +212,10 @@ export function useAllMarketData() {
   }, [queryClient]);
 
   const query = useQuery<MarketDataResponse>({
-    queryKey: ['marketData'],
+    queryKey: ['marketData', manualRefreshTrigger],
     queryFn: fetchMarketData,
     // Keep these settings for initial load and fallback
-    refetchInterval: 15000, // 15 seconds as fallback
+    refetchInterval: 10000, // 10 seconds as fallback
     refetchIntervalInBackground: true,
     staleTime: 0,
     gcTime: 30000,
@@ -213,7 +227,8 @@ export function useAllMarketData() {
   return {
     ...query,
     connectionStatus,
-    error
+    error,
+    refetch: refetchMarketData
   };
 }
 
@@ -222,6 +237,12 @@ export const useMarketData = (symbol: string) => {
   const queryClient = useQueryClient();
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  const [manualRefreshTrigger, setManualRefreshTrigger] = useState(0);
+
+  const refetchAssetData = () => {
+    console.log(`Manually refetching data for ${symbol} after receiving update`);
+    setManualRefreshTrigger(prev => prev + 1);
+  };
 
   useEffect(() => {
     let channel: any = null;
@@ -248,8 +269,26 @@ export const useMarketData = (symbol: string) => {
               filter: `symbol=eq.${symbol}`
             }, 
             (payload: any) => {
-              console.log(`Received real-time update for ${symbol}:`, payload);
+              console.log(`Received real-time update for ${symbol}:`, {
+                eventType: payload.eventType,
+                table: payload.table,
+                schema: payload.schema,
+                timestamp: new Date().toISOString(),
+                new: payload.new ? {
+                  symbol: payload.new.symbol,
+                  price: payload.new.price,
+                  change: payload.new.change
+                } : 'no new data'
+              });
+              
+              // First invalidate the cache
               queryClient.invalidateQueries({ queryKey: ['marketData', symbol] });
+              
+              // Then force a refresh
+              refetchAssetData();
+              
+              // Also explicitly refetch
+              queryClient.refetchQueries({ queryKey: ['marketData', symbol] });
             }
           )
           .subscribe(async (status: string) => {
@@ -305,15 +344,18 @@ export const useMarketData = (symbol: string) => {
   }, [symbol, queryClient]);
 
   const query = useQuery<any, Error>({
-    queryKey: ['marketData', symbol],
+    queryKey: ['marketData', symbol, manualRefreshTrigger],
     queryFn: async () => {
       try {
         const response = await fetch(`/api/market/data?symbol=${symbol}`, {
           credentials: 'include',
           headers: {
             'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache'
+          },
+          cache: 'no-store',
+          next: { revalidate: 0 }
         });
         if (!response.ok) {
           const errorText = await response.text();
@@ -330,7 +372,7 @@ export const useMarketData = (symbol: string) => {
         throw error;
       }
     },
-    refetchInterval: 15000,
+    refetchInterval: 10000,
     refetchIntervalInBackground: true,
     staleTime: 0,
     gcTime: 30000,
@@ -340,6 +382,7 @@ export const useMarketData = (symbol: string) => {
   return {
     ...query,
     connectionStatus,
-    error
+    error,
+    refetch: refetchAssetData
   };
 }; 
