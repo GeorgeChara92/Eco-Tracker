@@ -2,10 +2,10 @@ import { useQuery } from '@tanstack/react-query';
 import { MarketDataResponse } from '@/lib/yahoo-finance';
 
 // Cache configuration
-const CACHE_DURATION = 15 * 1000; // 15 seconds
-const REFETCH_INTERVAL = 15 * 1000; // 15 seconds
-const STALE_TIME = 5 * 1000; // 5 seconds
-const GC_TIME = 60 * 1000; // 1 minute
+const CACHE_DURATION = 5 * 1000; // 5 seconds
+const REFETCH_INTERVAL = 5 * 1000; // 5 seconds
+const STALE_TIME = 0; // Consider data stale immediately
+const GC_TIME = 30 * 1000; // 30 seconds
 const RETRY_COUNT = 3;
 
 const marketDataCache = new Map<string, { data: MarketDataResponse, timestamp: number }>();
@@ -48,7 +48,8 @@ export function useAllMarketData() {
     gcTime: GC_TIME,
     retry: RETRY_COUNT,
     refetchOnWindowFocus: true,
-    refetchOnReconnect: true
+    refetchOnReconnect: true,
+    refetchIntervalInBackground: true
   });
 }
 
