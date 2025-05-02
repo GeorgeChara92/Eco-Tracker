@@ -14,78 +14,134 @@ const marketDataCache = new Map<string, { data: MarketDataResponse, timestamp: n
 
 // Helper function to fetch market data
 async function fetchMarketData() {
-  console.log('Fetching fresh market data from Supabase');
-  const response = await fetch('/api/market/supabase');
-  if (!response.ok) {
-    throw new Error('Failed to fetch market data');
+  try {
+    console.log('Fetching fresh market data from Supabase');
+    const response = await fetch('/api/market/supabase');
+    if (!response.ok) {
+      throw new Error(`Failed to fetch market data: ${response.statusText}`);
+    }
+    const data = await response.json();
+    console.log('Successfully fetched market data');
+    return data;
+  } catch (error) {
+    console.error('Error fetching market data:', error);
+    throw error;
   }
-  return response.json();
 }
 
 // Custom hook for fetching market data
 export function useAllMarketData() {
   const queryClient = useQueryClient();
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected');
+  const [error, setError] = useState<string | null>(null);
 
   // Set up real-time subscription
   useEffect(() => {
-    console.log('Setting up Supabase real-time subscription');
-    
-    const channel = supabase
-      .channel('assets')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'assets'
-        },
-        (payload) => {
-          console.log('Received real-time update:', payload);
-          // Invalidate the query to trigger a refetch
-          queryClient.invalidateQueries({ queryKey: ['marketData'] });
-        }
-      )
-      .on('presence', { event: 'sync' }, () => {
-        console.log('Presence sync');
-      })
-      .on('broadcast', { event: 'test' }, ({ payload }) => {
-        console.log('Broadcast received:', payload);
-      })
-      .subscribe((status) => {
-        console.log('Subscription status:', status);
-        setConnectionStatus(status === 'SUBSCRIBED' ? 'connected' : 'disconnected');
-        
-        if (status === 'SUBSCRIBED') {
-          console.log('Successfully subscribed to real-time updates');
-        } else {
-          console.error('Failed to subscribe to real-time updates:', status);
-        }
-      });
+    let channel: any = null;
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
 
-    // Test the connection
-    const testConnection = async () => {
+    const setupSubscription = async () => {
       try {
-        const { data, error } = await supabase
+        // First, verify we can connect to Supabase
+        const { data, error: supabaseError } = await supabase
           .from('assets')
           .select('*')
           .limit(1);
         
-        if (error) {
-          console.error('Supabase connection test failed:', error);
-        } else {
-          console.log('Supabase connection test successful');
+        if (supabaseError) {
+          console.error('Supabase connection test failed:', supabaseError);
+          setError(supabaseError.message);
+          return;
         }
+
+        console.log('Supabase connection test successful');
+        
+        // Create and configure the channel
+        channel = supabase.channel('public:assets', {
+          config: {
+            broadcast: { self: true },
+            presence: { key: '' }
+          }
+        });
+
+        // Set up event handlers
+        channel
+          .on('broadcast', { event: 'test' }, ({ payload }: { payload: { message: string } }) => {
+            console.log('Broadcast test received:', payload);
+          })
+          .on('presence', { event: 'sync' }, () => {
+            console.log('Presence sync');
+          })
+          .on('postgres_changes', 
+            { 
+              event: '*', 
+              schema: 'public', 
+              table: 'assets' 
+            }, 
+            (payload: any) => {
+              console.log('Received real-time update:', payload);
+              queryClient.invalidateQueries({ queryKey: ['marketData'] });
+            }
+          );
+
+        // Subscribe to the channel
+        const subscription = channel.subscribe(async (status: string) => {
+          console.log('Subscription status:', status);
+          
+          if (status === 'SUBSCRIBED') {
+            console.log('Successfully subscribed to real-time updates');
+            setConnectionStatus('connected');
+            setError(null);
+            // Send a test broadcast
+            channel.send({
+              type: 'broadcast',
+              event: 'test',
+              payload: { message: 'Connection established' }
+            });
+          } else if (status === 'CLOSED') {
+            console.log('Subscription closed');
+            setConnectionStatus('disconnected');
+            
+            // Try to reconnect if we haven't exceeded max retries
+            if (retryCount < MAX_RETRIES) {
+              retryCount++;
+              console.log(`Attempting to reconnect (attempt ${retryCount}/${MAX_RETRIES})`);
+              setTimeout(() => {
+                if (channel) {
+                  channel.unsubscribe();
+                  setupSubscription();
+                }
+              }, 2000 * retryCount); // Exponential backoff
+            } else {
+              setError('Failed to establish real-time connection after multiple attempts');
+              console.error('Max retry attempts reached');
+            }
+          } else {
+            console.log('Subscription in progress:', status);
+            setConnectionStatus('disconnected');
+          }
+        });
+
+        return () => {
+          if (channel) {
+            console.log('Cleaning up Supabase subscription');
+            channel.unsubscribe();
+          }
+        };
       } catch (error) {
-        console.error('Error testing Supabase connection:', error);
+        console.error('Error in setupSubscription:', error);
+        setError('Failed to set up real-time subscription');
       }
     };
 
-    testConnection();
+    setupSubscription();
 
     return () => {
-      console.log('Cleaning up Supabase subscription');
-      channel.unsubscribe();
+      if (channel) {
+        console.log('Cleaning up Supabase subscription on unmount');
+        channel.unsubscribe();
+      }
     };
   }, [queryClient]);
 
@@ -102,14 +158,10 @@ export function useAllMarketData() {
     refetchOnReconnect: true
   });
 
-  // Log connection status changes
-  useEffect(() => {
-    console.log('Connection status changed:', connectionStatus);
-  }, [connectionStatus]);
-
   return {
     ...query,
-    connectionStatus
+    connectionStatus,
+    error
   };
 }
 
@@ -117,45 +169,102 @@ export function useAllMarketData() {
 export const useMarketData = (symbol: string) => {
   const queryClient = useQueryClient();
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected');
+  const [error, setError] = useState<string | null>(null);
 
-  // Set up real-time subscription for specific symbol
   useEffect(() => {
-    console.log(`Setting up Supabase real-time subscription for ${symbol}`);
-    
-    const channel = supabase
-      .channel(`asset-${symbol}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'assets',
-          filter: `symbol=eq.${symbol}`
-        },
-        (payload) => {
-          console.log(`Received real-time update for ${symbol}:`, payload);
-          queryClient.invalidateQueries({ queryKey: ['marketData', symbol] });
-        }
-      )
-      .subscribe((status) => {
-        console.log(`Subscription status for ${symbol}:`, status);
-        setConnectionStatus(status === 'SUBSCRIBED' ? 'connected' : 'disconnected');
-      });
+    let channel: any = null;
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
+
+    const setupSubscription = async () => {
+      try {
+        console.log(`Setting up Supabase real-time subscription for ${symbol}`);
+        
+        channel = supabase.channel(`asset-${symbol}`, {
+          config: {
+            broadcast: { self: true },
+            presence: { key: '' }
+          }
+        });
+
+        channel
+          .on('postgres_changes', 
+            { 
+              event: '*', 
+              schema: 'public', 
+              table: 'assets',
+              filter: `symbol=eq.${symbol}`
+            }, 
+            (payload: any) => {
+              console.log(`Received real-time update for ${symbol}:`, payload);
+              queryClient.invalidateQueries({ queryKey: ['marketData', symbol] });
+            }
+          )
+          .subscribe(async (status: string) => {
+            console.log(`Subscription status for ${symbol}:`, status);
+            
+            if (status === 'SUBSCRIBED') {
+              setConnectionStatus('connected');
+              setError(null);
+            } else if (status === 'CLOSED') {
+              console.log(`Subscription closed for ${symbol}`);
+              setConnectionStatus('disconnected');
+              
+              // Try to reconnect if we haven't exceeded max retries
+              if (retryCount < MAX_RETRIES) {
+                retryCount++;
+                console.log(`Attempting to reconnect for ${symbol} (attempt ${retryCount}/${MAX_RETRIES})`);
+                setTimeout(() => {
+                  if (channel) {
+                    channel.unsubscribe();
+                    setupSubscription();
+                  }
+                }, 2000 * retryCount); // Exponential backoff
+              } else {
+                setError(`Failed to establish real-time connection for ${symbol} after multiple attempts`);
+                console.error('Max retry attempts reached');
+              }
+            } else {
+              console.log(`Subscription in progress for ${symbol}:`, status);
+              setConnectionStatus('disconnected');
+            }
+          });
+
+        return () => {
+          if (channel) {
+            console.log(`Cleaning up Supabase subscription for ${symbol}`);
+            channel.unsubscribe();
+          }
+        };
+      } catch (error) {
+        console.error(`Error setting up subscription for ${symbol}:`, error);
+        setError(`Failed to set up real-time subscription for ${symbol}`);
+      }
+    };
+
+    setupSubscription();
 
     return () => {
-      console.log(`Cleaning up Supabase subscription for ${symbol}`);
-      channel.unsubscribe();
+      if (channel) {
+        console.log(`Cleaning up Supabase subscription for ${symbol} on unmount`);
+        channel.unsubscribe();
+      }
     };
   }, [symbol, queryClient]);
 
   const query = useQuery<any, Error>({
     queryKey: ['marketData', symbol],
     queryFn: async () => {
-      const response = await fetch(`/api/market/data?symbol=${symbol}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch market data');
+      try {
+        const response = await fetch(`/api/market/data?symbol=${symbol}`);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch market data: ${response.statusText}`);
+        }
+        return response.json();
+      } catch (error) {
+        console.error(`Error fetching data for ${symbol}:`, error);
+        throw error;
       }
-      return response.json();
     },
     refetchInterval: 15000,
     refetchIntervalInBackground: true,
@@ -166,6 +275,7 @@ export const useMarketData = (symbol: string) => {
 
   return {
     ...query,
-    connectionStatus
+    connectionStatus,
+    error
   };
 }; 
