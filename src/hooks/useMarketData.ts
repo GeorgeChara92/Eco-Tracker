@@ -16,15 +16,49 @@ const marketDataCache = new Map<string, { data: MarketDataResponse, timestamp: n
 async function fetchMarketData() {
   try {
     console.log('Fetching fresh market data from Supabase');
-    const response = await fetch('/api/market/supabase');
+    // Use relative URL to avoid protocol issues
+    const response = await fetch('/api/market/supabase', {
+      credentials: 'include',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    });
+    
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Failed to fetch market data:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
       throw new Error(`Failed to fetch market data: ${response.statusText}`);
     }
+    
     const data = await response.json();
     console.log('Successfully fetched market data');
     return data;
   } catch (error) {
     console.error('Error fetching market data:', error);
+    // If it's a certificate error, try with http
+    if (error instanceof TypeError && error.message.includes('cert')) {
+      console.log('Certificate error detected, trying alternative approach');
+      try {
+        const response = await fetch('/api/market/supabase', {
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          mode: 'cors'
+        });
+        if (!response.ok) throw new Error(`Failed to fetch market data: ${response.statusText}`);
+        return response.json();
+      } catch (fallbackError) {
+        console.error('Fallback fetch also failed:', fallbackError);
+        throw error; // Throw the original error
+      }
+    }
     throw error;
   }
 }
@@ -256,8 +290,20 @@ export const useMarketData = (symbol: string) => {
     queryKey: ['marketData', symbol],
     queryFn: async () => {
       try {
-        const response = await fetch(`/api/market/data?symbol=${symbol}`);
+        const response = await fetch(`/api/market/data?symbol=${symbol}`, {
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
         if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Failed to fetch market data:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorText
+          });
           throw new Error(`Failed to fetch market data: ${response.statusText}`);
         }
         return response.json();
