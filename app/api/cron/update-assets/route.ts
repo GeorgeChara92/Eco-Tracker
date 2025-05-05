@@ -93,9 +93,6 @@ export async function GET(request: Request) {
     }
 
     const token = authHeader.split(' ')[1];
-    console.log('Token received:', token ? '***' + token.slice(-4) : 'none');
-    console.log('Expected CRON_SECRET:', process.env.CRON_SECRET ? '***' + process.env.CRON_SECRET.slice(-4) : 'not set');
-
     if (token !== process.env.CRON_SECRET) {
       console.error('Unauthorized request: Token mismatch');
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
