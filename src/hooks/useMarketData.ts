@@ -68,12 +68,14 @@ export function useAllMarketData() {
   const queryClient = useQueryClient();
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
 
   // Set up real-time subscription
   useEffect(() => {
     let channel: any = null;
     let retryCount = 0;
     const MAX_RETRIES = 3;
+    let pollInterval: NodeJS.Timeout;
 
     const setupSubscription = async () => {
       try {
@@ -91,7 +93,7 @@ export function useAllMarketData() {
 
         console.log('Supabase connection test successful');
         
-        // Create and configure the channel with more robust settings
+        // Create and configure the channel
         channel = supabase.channel('public:assets', {
           config: {
             broadcast: { self: true },
@@ -99,7 +101,7 @@ export function useAllMarketData() {
           }
         });
 
-        // Set up event handlers with better error handling
+        // Set up event handlers
         channel
           .on('broadcast', { event: 'test' }, ({ payload }: { payload: { message: string } }) => {
             console.log('Broadcast test received:', payload);
@@ -115,6 +117,7 @@ export function useAllMarketData() {
             }, 
             (payload: any) => {
               console.log('Received real-time update:', payload);
+              setLastUpdateTime(Date.now());
               queryClient.invalidateQueries({ queryKey: ['marketData'] });
             }
           )
@@ -124,7 +127,8 @@ export function useAllMarketData() {
             // Attempt to reconnect with exponential backoff
             if (channel) {
               channel.unsubscribe();
-              const delay = Math.min(2000 * Math.pow(2, retryCount), 30000); // Max 30 seconds
+              const delay = Math.min(2000 * Math.pow(2, retryCount), 30000);
+              console.log(`Scheduling reconnection in ${delay}ms`);
               setTimeout(setupSubscription, delay);
             }
           })
@@ -134,12 +138,13 @@ export function useAllMarketData() {
             // Attempt to reconnect with exponential backoff
             if (channel) {
               channel.unsubscribe();
-              const delay = Math.min(2000 * Math.pow(2, retryCount), 30000); // Max 30 seconds
+              const delay = Math.min(2000 * Math.pow(2, retryCount), 30000);
+              console.log(`Scheduling reconnection in ${delay}ms`);
               setTimeout(setupSubscription, delay);
             }
           });
 
-        // Subscribe to the channel with better status handling
+        // Subscribe to the channel
         const subscription = channel.subscribe(async (status: string) => {
           console.log('Subscription status:', status);
           
@@ -147,7 +152,11 @@ export function useAllMarketData() {
             console.log('Successfully subscribed to real-time updates');
             setConnectionStatus('connected');
             setError(null);
-            retryCount = 0; // Reset retry count on successful connection
+            retryCount = 0;
+            // Clear any existing polling interval
+            if (pollInterval) {
+              clearInterval(pollInterval);
+            }
             // Send a test broadcast
             channel.send({
               type: 'broadcast',
@@ -161,7 +170,7 @@ export function useAllMarketData() {
             // Try to reconnect if we haven't exceeded max retries
             if (retryCount < MAX_RETRIES) {
               retryCount++;
-              const delay = Math.min(2000 * Math.pow(2, retryCount), 30000); // Max 30 seconds
+              const delay = Math.min(2000 * Math.pow(2, retryCount), 30000);
               console.log(`Attempting to reconnect (attempt ${retryCount}/${MAX_RETRIES}) in ${delay}ms`);
               setTimeout(() => {
                 if (channel) {
@@ -171,7 +180,14 @@ export function useAllMarketData() {
               }, delay);
             } else {
               setError('Failed to establish real-time connection after multiple attempts');
-              console.error('Max retry attempts reached');
+              console.error('Max retry attempts reached, falling back to polling');
+              // Set up polling as fallback
+              if (!pollInterval) {
+                pollInterval = setInterval(() => {
+                  console.log('Polling for updates...');
+                  queryClient.invalidateQueries({ queryKey: ['marketData'] });
+                }, 15000); // Poll every 15 seconds
+              }
             }
           } else {
             console.log('Subscription in progress:', status);
@@ -184,12 +200,20 @@ export function useAllMarketData() {
             console.log('Cleaning up Supabase subscription');
             channel.unsubscribe();
           }
+          if (pollInterval) {
+            clearInterval(pollInterval);
+          }
         };
       } catch (error) {
         console.error('Error in setupSubscription:', error);
         setError('Failed to set up real-time subscription');
-        // Attempt to reconnect after error
-        setTimeout(setupSubscription, 2000);
+        // Set up polling as fallback
+        if (!pollInterval) {
+          pollInterval = setInterval(() => {
+            console.log('Polling for updates...');
+            queryClient.invalidateQueries({ queryKey: ['marketData'] });
+          }, 15000); // Poll every 15 seconds
+        }
       }
     };
 
@@ -199,6 +223,9 @@ export function useAllMarketData() {
       if (channel) {
         console.log('Cleaning up Supabase subscription on unmount');
         channel.unsubscribe();
+      }
+      if (pollInterval) {
+        clearInterval(pollInterval);
       }
     };
   }, [queryClient]);
@@ -219,7 +246,8 @@ export function useAllMarketData() {
   return {
     ...query,
     connectionStatus,
-    error
+    error,
+    lastUpdateTime
   };
 }
 
